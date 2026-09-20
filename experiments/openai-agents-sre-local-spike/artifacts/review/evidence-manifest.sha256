@@ -8,4 +8,4 @@ b81721093e83de30a4e29c7556a47ebe39e2757f7ff36fa6e395a13f8ccd9ba5  experiments/op
 22bea8905f892128e779b35bc278f6ec96addde924d07e5b1d12ed166dccd4cf  experiments/openai-agents-sre-local-spike/artifacts/review/test-results.txt
 54785ebcec554842c446b2d03103f248812cd88c311846b2876bea3e48eaf0ea  experiments/openai-agents-sre-local-spike/artifacts/review/payload-audit.txt
 58e302df9cf2322883208aa580a0a8bcd41128764101f97b9473ff549cb6d035  experiments/openai-agents-sre-local-spike/artifacts/review/tree-listing.txt
-5fee044fbb4326a941a6f2270e886ce3b1652dc676b3e99b06b9f125e58243f4  experiments/openai-agents-sre-local-spike/artifacts/review/security-scan.txt
+2387eb546bc3f823a17afa90963ac2f550db0037f99d2413a3c9e44f21f0b18b  experiments/openai-agents-sre-local-spike/artifacts/review/security-scan.txt

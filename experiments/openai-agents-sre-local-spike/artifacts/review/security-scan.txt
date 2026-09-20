@@ -3,3 +3,6 @@ Staged diff likely-secret scan: PASS (no likely credential values after excludin
 All-Git-history credential-shaped scan: PASS (no credential-shaped matches).
 Expanded Compose credential-value scan: PASS (no interpolated credential values included).
 Authorization headers, signed URLs, and full environment dumps were not included in review evidence.
+Public-readiness: not recommended yet; the current head uses local placeholders,
+but the existing base Git history contains the supplied non-secret agent/project
+identifiers. Repository visibility was left private.
