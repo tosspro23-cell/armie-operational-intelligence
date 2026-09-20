@@ -1,0 +1,16 @@
+python3 -m compileall -q controller target_service tests
+PASS
+
+python3 -m unittest discover -s tests -v
+Ran 15 tests in 0.002s
+OK
+
+git diff --check
+PASS
+
+docker compose -f docker-compose.yml config --quiet
+PASS
+
+Credential presence check (values not displayed):
+OPENAI_API_KEY=missing
+OPENAI_EXECUTOR_API_KEY=missing

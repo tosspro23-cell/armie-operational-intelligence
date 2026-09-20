@@ -1,0 +1,5 @@
+Tracked tree likely-secret scan: PASS (no likely credential values; .env.example contains placeholders only).
+Staged diff likely-secret scan: PASS (no likely credential values after excluding documented .env.example placeholders).
+All-Git-history credential-shaped scan: PASS (no credential-shaped matches).
+Expanded Compose credential-value scan: PASS (no interpolated credential values included).
+Authorization headers, signed URLs, and full environment dumps were not included in review evidence.

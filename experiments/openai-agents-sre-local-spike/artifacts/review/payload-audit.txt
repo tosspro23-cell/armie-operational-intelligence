@@ -1,0 +1,6 @@
+Actual payload-construction check (values not printed):
+saved_agent_id_in_payload=True
+project_id_in_metadata=True
+override_model=gpt-5.6-luna
+environment=self_hosted workspace=/workspace
+replacement_agent_definition=false

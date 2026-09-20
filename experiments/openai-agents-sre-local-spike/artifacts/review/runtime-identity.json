@@ -1,0 +1,11 @@
+{
+  "agents_api_environment_id": null,
+  "agents_api_session_id": null,
+  "configured_model": "gpt-5.6-luna",
+  "deployment_version": "deploy-2026-09-20.2",
+  "environment_type": "self_hosted",
+  "experiment": "armie-operational-intelligence",
+  "experiment_version": "spike-001-live-validation",
+  "git_commit": "80c4c43cd14aaba3678323c96ee9806b606a3200",
+  "target_service_version": "synthetic-payment-api-2026.09.20.2"
+}
