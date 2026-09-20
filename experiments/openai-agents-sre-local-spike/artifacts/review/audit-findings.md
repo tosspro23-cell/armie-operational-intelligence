@@ -12,10 +12,16 @@ Corrected before this validation attempt:
 - no volume deletion in Compose startup;
 - deterministic denied-approval and executor-environment tests.
 
-Not demonstrated because Docker and credential readiness failed:
+Not demonstrated because credential readiness failed before session creation:
 
 - real Agents API session creation;
 - self-hosted environment connection;
 - real agent shell/tool investigation;
 - same-session contradictory-evidence reassessment;
 - remediation recommendation and post-remediation verification.
+
+Demonstrated after the Docker retry:
+
+- target health and real HTTP checkout fault;
+- structured evidence and deterministic fault reproducibility;
+- executor target reachability, evidence read, and read-only write rejection.

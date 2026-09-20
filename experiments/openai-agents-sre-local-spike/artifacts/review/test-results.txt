@@ -14,3 +14,12 @@ PASS
 Credential presence check (values not displayed):
 OPENAI_API_KEY=missing
 OPENAI_EXECUTOR_API_KEY=missing
+
+Local Docker acceptance:
+docker run --rm busybox:latest echo docker-ok: PASS
+target health: PASS (HTTP 200)
+checkout fault: PASS (8 real HTTP 504 responses)
+structured logs/deployment/config/runbook: PASS
+executor reach/read/read-only-write-boundary: PASS
+fault reproducibility after target force-recreate: PASS
+controller real run credential boundary: PASS (stopped before session creation with both keys missing)

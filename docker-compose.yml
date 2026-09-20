@@ -47,7 +47,7 @@ services:
 
 networks:
   spike:
-    name: armie-operational-intelligence-spike
+    name: armie-operational-intelligence-spike-live
 
 volumes:
   spike_runtime:

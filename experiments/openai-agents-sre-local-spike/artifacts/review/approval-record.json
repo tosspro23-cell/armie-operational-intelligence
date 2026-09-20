@@ -2,5 +2,5 @@
   "status": "not_reached",
   "approved": false,
   "mutation_before_approval": false,
-  "reason": "No recommendation was produced because local runtime prerequisites failed"
+  "reason": "No recommendation was produced because credential readiness failed before session creation"
 }

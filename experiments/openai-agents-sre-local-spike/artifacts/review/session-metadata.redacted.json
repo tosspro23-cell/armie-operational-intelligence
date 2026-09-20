@@ -4,5 +4,7 @@
   "environment_id": null,
   "environment_remote_url": "[NOT_PERSISTED]",
   "saved_agent_reused": false,
-  "reason": "Docker and credential readiness gates failed before session creation"
+  "local_docker_validation": "passed",
+  "local_incident_validation": "passed",
+  "reason": "Credential readiness gate failed before session creation"
 }

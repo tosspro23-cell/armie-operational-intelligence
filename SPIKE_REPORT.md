@@ -1,10 +1,9 @@
 # ARMIE Architecture Spike #001 — OpenAI Agents API local SRE runtime
 
-Status: implementation audit and deterministic validation are complete on
-`spike/openai-agents-sre-live-validation`. The live acceptance run remains
-blocked before session creation because Docker cannot start a minimal
-container and both required credentials are absent from this shell. No real
-Agents API session or live agent result is claimed.
+Status: Docker and the local synthetic incident are now live-demonstrated on
+`spike/openai-agents-sre-live-validation`. The real Agents API run remains
+blocked before session creation because both required credentials are absent
+from this shell. No real Agents API session or live agent result is claimed.
 
 ## 1. Experiment Objective
 
@@ -52,10 +51,9 @@ mounted runtime evidence and real HTTP/log interaction.
 
 ## 5. Agent Investigation Trace
 
-Not reached. A real session was not created because Docker could not start the
-local target or the executor, and the credential readiness gate reported both
-required variables missing. No agent-generated tool call, shell action, or
-model output was fabricated.
+Not reached. A real session was not created because the credential readiness
+gate reported both required variables missing. No agent-generated tool call,
+shell action, or model output was fabricated.
 
 ## 6. Hypotheses Generated
 
@@ -66,11 +64,14 @@ controller expectations.
 
 ## 7. Evidence Gathered
 
-The deterministic tests prove the domain-level fault and safe behavior. On the
-validation checkout, the target image built successfully, but its container
-remained `Created`; therefore no live HTTP, structured-log, target health, or
-executor-boundary evidence is claimed. The local HTTP acceptance gate was not
-entered.
+The live target returned health 200 and eight real checkout responses with
+status 504. The downstream diagnostic reported status `ok`, latency 168 ms,
+and a warning threshold of 150 ms. Metrics recorded eight attempts and eight
+timeouts. Structured JSONL logs, deployment metadata, runtime configuration,
+and the runbook were read from the running container. The executor boundary
+check reached the target, read the evidence volume, and was denied write access
+by the read-only mount. A target force-recreate with the fault fixture produced
+the same timeout again.
 
 ## 8. Hypothesis Revision Test
 
@@ -113,14 +114,13 @@ read evidence, and cannot write the read-only evidence volume.
 
 ## 14. Self-Hosted Environment Observations
 
-The target Docker image built successfully in the validation checkout. Docker
-Desktop reported client/server `29.8.0`, context `desktop-linux`, Docker
-Desktop `aarch64`, and `overlayfs`; however, the target remained `Created` after
-a bounded `docker compose up` attempt. The required disposable
-`docker run --rm busybox:latest echo docker-ok` also produced no output and
-left a `Created` container until that exact disposable test container was
-removed. The executor image was not started. This is a Docker runtime blocker,
-not evidence of a target application failure.
+The Docker runtime recovered during this validation: the required disposable
+command printed `docker-ok`. The target and executor images built, the target
+ran healthy, and the target host port became reachable after the Compose
+network was changed to a unique experiment network. The prior stale network
+had no attached containers and caused the first healthy target to be
+host-unreachable. No volume deletion, prune, factory reset, or unrelated
+container cleanup was performed.
 
 ## 15. Event/Observability Quality
 
@@ -129,7 +129,9 @@ Agents API events, per-turn event slices, retrieved session items, terminal
 turn outcome, approval, remediation, and verification records. The
 deterministic tests verified artifact persistence, field-aware redaction,
 credential separation, approval denial, and saved-agent payload construction.
-No live Agents API JSONL stream was produced in this run.
+No live Agents API JSONL stream was produced because credential readiness failed
+before session creation. Local controller and target evidence was captured in
+the ignored run directory and summarized in the tracked review evidence.
 
 ## 16. Failures and Limitations
 
@@ -144,8 +146,9 @@ Observed blockers on 2026-09-20:
 
 - `OPENAI_API_KEY` and `OPENAI_EXECUTOR_API_KEY` were both missing in the
   invoking environment. No session request was attempted.
-- Docker Desktop 29.8.0 on `aarch64` could build images and pull layers but did
-  not start even a minimal container; created containers remained `Created`.
+- Docker Desktop 29.8.0 on `aarch64` initially left containers in `Created`,
+  then passed the busybox smoke test after recovery. A stale network/project
+  ownership conflict was resolved by using a unique experiment network.
 - The host `Documents` worktree also became content-read-inaccessible to shell
   commands during this run. The implementation branch was prepared in a
   disposable `/tmp` clone from the exact `develop` commit to avoid overwriting
@@ -189,8 +192,8 @@ the Codex conversation.
 ## 19. Architecture Observations
 
 Factual observation at this boundary: the code path and deterministic tests are
-available, but the completion gate is not satisfied. A follow-up run must
-restore Docker, set both credentials and runtime identifiers locally, revalidate
-the synthetic incident, create a real session, and capture the full same-session
+available, Docker and the local incident are demonstrated, but the completion
+gate is not satisfied. A follow-up run must set both credentials and runtime
+identifiers locally, create a real session, and capture the full same-session
 trace before this report can be marked complete. This spike does not decide the
 final ARMIE architecture or recommend production adoption.
