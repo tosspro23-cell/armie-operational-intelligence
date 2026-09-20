@@ -20,10 +20,12 @@ configuration and restart the synthetic target container.
 
 ## Current execution status
 
-Source and deterministic tests are implemented. A real acceptance run is only
-complete after `SPIKE_REPORT.md` records an actual session ID and the captured
-JSONL evidence under `artifacts/runs/`. Do not infer completion from a green
-unit-test run.
+Source, Docker, and the deterministic local incident validation are implemented
+and demonstrated. The real acceptance run is only complete after
+`SPIKE_REPORT.md` records an actual session ID and the captured JSONL evidence
+under `artifacts/runs/`. The current run stops before session creation when the
+two required credentials are missing. Do not infer completion from a green
+unit-test or local-service run.
 
 ## Prerequisites
 
