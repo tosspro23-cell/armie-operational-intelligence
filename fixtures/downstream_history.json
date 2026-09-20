@@ -1,0 +1,18 @@
+{
+  "service": "synthetic-payment-api",
+  "window": "2026-09-20T08:45:00Z/2026-09-20T09:20:00Z",
+  "downstream": "payment-gateway-simulator",
+  "baseline": {
+    "p50_ms": 92,
+    "p95_ms": 118,
+    "status_rate": 1.0
+  },
+  "incident_window": {
+    "p50_ms": 144,
+    "p95_ms": 168,
+    "status_rate": 1.0,
+    "warning": "latency above the normal warning threshold"
+  },
+  "note": "The simulator remained available throughout the window."
+}
+

@@ -1,0 +1,53 @@
+services:
+  target:
+    build:
+      context: .
+      dockerfile: target_service/Dockerfile
+    environment:
+      SERVICE_NAME: synthetic-payment-api
+      SERVICE_VERSION: synthetic-payment-api-2026.09.20.2
+      RUNTIME_CONFIG_PATH: /app/shared/runtime_config.json
+      DEPLOYMENT_METADATA_PATH: /app/metadata/deployment.json
+      RUNBOOK_PATH: /app/runbook/runbook.md
+      LOG_PATH: /app/shared/service.jsonl
+      METRICS_PATH: /app/shared/metrics.json
+    ports:
+      - "${TARGET_PORT:-18080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - spike_runtime:/app/shared
+    networks:
+      - spike
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  sre_environment:
+    build:
+      context: .
+      dockerfile: sre_environment/Dockerfile
+    working_dir: /workspace
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /root
+    environment:
+      CODEX_API_KEY:
+      SESSION_REMOTE_URL:
+      SESSION_ENVIRONMENT_ID:
+    volumes:
+      - spike_runtime:/workspace/artifacts/runtime:ro
+    networks:
+      - spike
+
+networks:
+  spike:
+    name: armie-operational-intelligence-spike
+
+volumes:
+  spike_runtime:
+    name: armie-operational-intelligence-spike-runtime

@@ -1,0 +1,10 @@
+{
+  "service_name": "synthetic-payment-api",
+  "service_version": "synthetic-payment-api-2026.09.20.2",
+  "mode": "incident",
+  "checkout_timeout_ms": 120,
+  "downstream_latency_ms": 168,
+  "downstream_status": "ok",
+  "dependency_warning_threshold_ms": 150
+}
+

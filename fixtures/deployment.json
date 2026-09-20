@@ -1,0 +1,12 @@
+{
+  "service": "synthetic-payment-api",
+  "deployment_id": "deploy-2026-09-20.2",
+  "version": "synthetic-payment-api-2026.09.20.2",
+  "previous_version": "synthetic-payment-api-2026.09.20.1",
+  "deployed_at": "2026-09-20T09:00:00Z",
+  "change_window": "2026-09-20T08:55:00Z/2026-09-20T09:05:00Z",
+  "changed_files": ["config/runtime.json"],
+  "change_note": "checkout latency budget tuning",
+  "rollback_reference": "synthetic-payment-api-2026.09.20.1"
+}
+
