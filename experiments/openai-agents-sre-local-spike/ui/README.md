@@ -35,6 +35,13 @@ the page updates through SSE. The proposal is controller-owned in this first
 slice; approving it is optional and only recreates the synthetic target with
 the known-safe configuration.
 
+The **Customer Payment Surface** is a deliberately fixed, local-only payment
+demo. Clicking **Simulate payment** sends one `ui-demo-order` checkout through
+the FastAPI controller to the running target. A failure is shown first as a
+customer-readable payment message, then as a technical-details dialog with
+the observed HTTP status, error code, request ID, and dependency latency. It
+does not accept card data and never performs a real charge.
+
 ## Build
 
 ```bash

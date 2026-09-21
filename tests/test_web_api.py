@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -45,6 +46,31 @@ class WebConsoleContractTests(unittest.TestCase):
         console = LocalConsole()
         with self.assertRaises(HTTPException):
             console.approve(ApprovalRequest(decision="approve", proposal_id="missing"))
+
+    @patch("controller.web_api.request_json")
+    def test_payment_simulation_uses_only_fixed_checkout_operation(self, request_json) -> None:
+        request_json.side_effect = [
+            {
+                "path": "/checkout",
+                "status": 504,
+                "body": {
+                    "request_id": "synthetic-request",
+                    "error_code": "checkout_dependency_timeout",
+                },
+            },
+            {"path": "/metrics", "status": 200, "body": {"checkout_timeouts": 1}},
+        ]
+        console = LocalConsole()
+
+        result = console.simulate_payment()
+
+        request_json.assert_any_call(
+            "/checkout",
+            method="POST",
+            body={"order_id": "ui-demo-order", "amount_cents": 1099},
+        )
+        self.assertEqual(result["checkout"]["status"], 504)
+        self.assertEqual(console.snapshot()["target"]["last_checkout"]["label"], "ui_simulated_checkout")
 
 
 if __name__ == "__main__":

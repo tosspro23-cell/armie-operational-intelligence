@@ -18,6 +18,9 @@ The first slice exposes:
 
 - target health, checkout behavior, metrics, downstream diagnostics, and the
   fresh timeline observation;
+- a customer-facing payment simulation surface that calls one fixed synthetic
+  checkout through the controller and translates an observed failure into a
+  clear payment error state;
 - structured runtime logs, runtime configuration, deployment metadata, and
   runbook content;
 - an explicit local validation lifecycle;
@@ -98,6 +101,8 @@ All routes are local-only and return sanitized JSON.
 - `GET /api/evidence/config`: runtime config, deployment, and runbook;
 - `GET /api/events`: current event snapshot;
 - `GET /api/events/stream`: SSE lifecycle events;
+- `POST /api/checkout/simulate`: run one fixed local test payment through the
+  controller and return the observed checkout/metrics envelope;
 - `POST /api/local/start`: start the target and run real local probes;
 - `POST /api/approval`: approve or deny the current fixed remediation proposal;
 - `POST /api/local/reset`: restore the initial deterministic fault state;
@@ -126,6 +131,9 @@ an arbitrary action.
 ## Interaction rules
 
 - failed checkout must be visible as an HTTP status and structured error code;
+- the customer-facing payment surface must make the business symptom visible
+  before showing the technical status, and its detail dialog must identify the
+  response as synthetic local evidence;
 - raw JSON remains available behind an expandable evidence view;
 - red/amber/green are supplemented with text labels and icons;
 - no UI state may imply recovery until a new HTTP checkout and new metrics/log

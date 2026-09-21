@@ -9,8 +9,10 @@ No real Agents API session or live agent result is claimed.
 
 This branch also adds a local-only Vite/React console over the existing FastAPI
 controller. It has been built and opened against a real Docker target; it shows
-the fault, evidence, controller SSE events, and approval boundary. It does not
-create or simulate an Agent API session.
+the customer-facing payment failure, fault evidence, controller SSE events, and
+approval boundary. Its fixed `ui-demo-order` request returned a real synthetic
+HTTP 504 and emitted a `payment.checkout.simulated` controller event. It does
+not create or simulate an Agent API session.
 
 ## 1. Experiment Objective
 
@@ -177,7 +179,10 @@ the ignored run directory and summarized in the tracked review evidence.
 The local console adds a separate SSE stream for sanitized controller lifecycle
 events. Browser-visible evidence is labelled as observed, controller-owned, or
 reserved for a future live Agent run; it does not present private model
-chain-of-thought as UI content.
+chain-of-thought as UI content. The customer payment surface uses the same
+observed checkout envelope to present a business-level failure first and a
+technical detail dialog second; the browser still calls only the local
+controller's fixed checkout route.
 
 ## 16. Failures and Limitations
 

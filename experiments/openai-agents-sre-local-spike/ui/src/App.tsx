@@ -105,6 +105,7 @@ const eventTypes = [
   "remediation.applied",
   "verification.completed",
   "remediation.failed",
+  "payment.checkout.simulated",
   "ui.run.failed",
   "target.stopped",
 ];
@@ -147,6 +148,11 @@ function formatJson(value: unknown): string {
 function responseBody(value: JsonMap | null): JsonMap {
   const body = value?.body;
   return typeof body === "object" && body !== null ? (body as JsonMap) : {};
+}
+
+function formatAmountCents(value: unknown): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `€${(amount / 100).toFixed(2)}` : "€10.99";
 }
 
 function formatTime(value: unknown): string {
@@ -192,6 +198,7 @@ export default function App() {
   const [tab, setTab] = useState("logs");
   const [busy, setBusy] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const [paymentDetailsOpen, setPaymentDetailsOpen] = useState(false);
 
   const refreshState = useCallback(async () => {
     try {
@@ -288,6 +295,14 @@ export default function App() {
   ] : [];
   const timeoutRate = Number(metrics.checkout_attempts) > 0 ? Math.round((Number(metrics.checkout_timeouts ?? 0) / Number(metrics.checkout_attempts)) * 100) : null;
   const latestEvents = useMemo(() => [...events].reverse(), [events]);
+  const paymentAmount = formatAmountCents(checkout.amount_cents ?? 1099);
+  const paymentDetail = {
+    status: checkoutStatus,
+    error_code: checkout.error_code,
+    request_id: checkout.request_id,
+    downstream_latency_ms: checkout.downstream_latency_ms,
+    simulated_order: "ui-demo-order",
+  };
 
   return (
     <main className="app-shell">
@@ -364,6 +379,37 @@ export default function App() {
 
       <section className="content-grid">
         <div className="main-column">
+          <section className={`panel payment-panel ${checkoutFailed ? "degraded" : checkoutStatus === "200" ? "recovered" : ""}`}>
+            <div className="panel-header">
+              <div><div className="section-kicker">CUSTOMER PAYMENT SURFACE</div><h3>What the customer experiences</h3></div>
+              <span className="provenance-chip observed">synthetic local flow</span>
+            </div>
+            <div className="payment-layout">
+              <div className="checkout-card">
+                <div className="checkout-card-top"><span className="payment-brand">ARMIE <em>PAY</em></span><span className="lock-label">⌁ TEST ENVIRONMENT</span></div>
+                <div className="checkout-title">Complete your payment</div>
+                <div className="checkout-subtitle">Synthetic order · no real charge</div>
+                <div className="checkout-order"><span>Order #UI-DEMO-1099</span><strong>{paymentAmount}</strong></div>
+                <div className="payment-fields">
+                  <div className="payment-field"><span>Card number</span><strong>••••  ••••  ••••  4242</strong></div>
+                  <div className="payment-field"><span>Cardholder</span><strong>ARMIE TEST USER</strong></div>
+                  <div className="payment-field small"><span>Expiry</span><strong>12 / 30</strong></div>
+                  <div className="payment-field small"><span>Security code</span><strong>•••</strong></div>
+                </div>
+                <button className="payment-button" disabled={busy || state.phase === "idle"} onClick={() => void runAction(() => postJson("/api/checkout/simulate"))}>
+                  {checkoutStatus === "200" ? "Run payment again" : "Simulate payment"} · {paymentAmount}
+                </button>
+                <div className="checkout-secure">⌁ Routed only to the local synthetic payment API</div>
+              </div>
+              <div className="payment-explanation">
+                <div className="section-kicker">BUSINESS SYMPTOM</div>
+                {checkoutFailed ? <div className="payment-alert failure"><div className="payment-alert-icon">!</div><div><strong>Payment could not be completed</strong><p>The checkout service timed out while contacting its simulated payment dependency.</p></div></div> : checkoutStatus === "200" ? <div className="payment-alert success"><div className="payment-alert-icon">✓</div><div><strong>Payment completed</strong><p>The latest synthetic checkout returned a successful response.</p></div></div> : <div className="payment-alert waiting"><div className="payment-alert-icon">…</div><div><strong>Payment surface is waiting</strong><p>Start local validation to exercise the customer-facing checkout flow.</p></div></div>}
+                {checkoutFailed ? <div className="payment-technical"><div><span>Customer-visible result</span><strong>Payment failed</strong></div><div><span>Technical status</span><strong>HTTP {checkoutStatus}</strong></div><div><span>Incident code</span><strong>{stringOf(checkout.error_code)}</strong></div><button className="link-button" onClick={() => setPaymentDetailsOpen(true)}>View technical error details ↗</button></div> : null}
+                {checkoutStatus === "200" ? <div className="payment-technical"><div><span>Customer-visible result</span><strong>Payment confirmed</strong></div><div><span>Technical status</span><strong>HTTP 200</strong></div><div><span>Evidence</span><strong>new checkout response</strong></div></div> : null}
+              </div>
+            </div>
+          </section>
+
           <section className="panel overview-panel">
             <div className="panel-header"><div><div className="section-kicker">SERVICE OBSERVABILITY</div><h3>What the target is telling us</h3></div><span className="provenance-chip observed">observed</span></div>
             <div className="metric-cards">
@@ -441,6 +487,16 @@ export default function App() {
           </section>
         </aside>
       </section>
+
+      {paymentDetailsOpen ? <div className="modal-backdrop" role="presentation" onClick={() => setPaymentDetailsOpen(false)}>
+        <section className="details-modal" role="dialog" aria-modal="true" aria-labelledby="payment-error-title" onClick={(event) => event.stopPropagation()}>
+          <div className="panel-header"><div><div className="section-kicker">TECHNICAL DETAIL</div><h3 id="payment-error-title">Payment failure evidence</h3></div><button className="close-button" aria-label="Close technical details" onClick={() => setPaymentDetailsOpen(false)}>×</button></div>
+          <div className="modal-summary"><div className="modal-error-icon">!</div><div><strong>Customer payment failed</strong><p>The business symptom is backed by an observed response from the synthetic target.</p></div></div>
+          <div className="detail-grid"><div><span>HTTP status</span><strong>{checkoutStatus}</strong></div><div><span>Error code</span><strong>{stringOf(checkout.error_code)}</strong></div><div><span>Request ID</span><strong>{stringOf(checkout.request_id)}</strong></div><div><span>Dependency latency</span><strong>{stringOf(checkout.downstream_latency_ms)} ms</strong></div></div>
+          <CodeBlock value={paymentDetail} />
+          <div className="modal-footnote"><span className="provenance-chip observed">observed target response</span><span>This is the bridge from customer impact to SRE evidence. Logs, metrics, and timeline remain in the console.</span></div>
+        </section>
+      </div> : null}
 
       <footer className="footer"><span>ARMIE SRE Local Console · experiment version {stringOf(identity.experiment_version)}</span><span>Commit <code>{stringOf(identity.git_commit, "unavailable")}</code></span></footer>
     </main>

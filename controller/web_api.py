@@ -147,6 +147,42 @@ class LocalConsole:
     def reset_local(self) -> dict[str, Any]:
         return self._launch(self._run_local)
 
+    def simulate_payment(self) -> dict[str, Any]:
+        """Run one fixed synthetic checkout for the customer-facing demo.
+
+        The browser cannot choose a target path, command, or arbitrary payload.
+        This endpoint always exercises the experiment's checkout operation with
+        a fixed local test order, then refreshes the observed metrics.
+        """
+
+        try:
+            checkout = request_json(
+                "/checkout",
+                method="POST",
+                body={"order_id": "ui-demo-order", "amount_cents": 1099},
+            )
+            metrics = request_json("/metrics")
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="synthetic checkout is unavailable") from exc
+
+        with self.lock:
+            self.state["target"]["last_checkout"] = {
+                "label": "ui_simulated_checkout",
+                **checkout,
+            }
+            self.state["target"]["metrics"] = metrics
+        body = checkout.get("body", {}) if isinstance(checkout.get("body"), dict) else {}
+        self.emit(
+            "payment.checkout.simulated",
+            {
+                "status": checkout.get("status"),
+                "error_code": body.get("error_code"),
+                "request_id": body.get("request_id"),
+                "order_id": "ui-demo-order",
+            },
+        )
+        return {"checkout": checkout, "metrics": metrics}
+
     def _begin_run(self) -> None:
         run_dir, capture = new_run()
         with self.lock:
@@ -405,6 +441,11 @@ def start_local() -> dict[str, Any]:
 @app.post("/api/local/reset", status_code=202)
 def reset_local() -> dict[str, Any]:
     return console.reset_local()
+
+
+@app.post("/api/checkout/simulate")
+def simulate_checkout() -> dict[str, Any]:
+    return console.simulate_payment()
 
 
 @app.post("/api/local/stop")
