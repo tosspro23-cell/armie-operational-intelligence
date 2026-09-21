@@ -12,9 +12,9 @@ RUNTIME_ROOT = ARTIFACTS_ROOT / "runtime"
 FIXTURES_ROOT = REPO_ROOT / "fixtures"
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
 
-EXPERIMENT_VERSION = "spike-001"
-AGENT_ID = "agent_8041a399c9434e048f081b847bd11b74bf6e735fde2f4685a4"
-OPENAI_PROJECT_ID = "proj_9sCbaTpOFpqXFsKs4FXhbzFz"
+EXPERIMENT_VERSION = "spike-001-live-validation"
+AGENT_ID_ENV_VAR = "ARMIE_SRE_AGENT_ID"
+OPENAI_PROJECT_ID_ENV_VAR = "OPENAI_PROJECT_ID"
 MODEL = "gpt-5.6-luna"
 TARGET_SERVICE_VERSION = "synthetic-payment-api-2026.09.20.2"
 DEPLOYMENT_VERSION = "deploy-2026-09-20.2"
@@ -39,23 +39,60 @@ INITIAL_USER_MESSAGE = (
 )
 
 
+def _required_value(name: str, env: Mapping[str, str] | None = None) -> str:
+    source = os.environ if env is None else env
+    value = source.get(name, "")
+    if not value.strip():
+        raise RuntimeError(f"{name} is required for this operation")
+    return value.strip()
+
+
 def require_openai_api_key(env: Mapping[str, str] | None = None) -> str:
-    """Return the only accepted credential, without ever displaying it."""
+    """Return the controller credential without ever displaying it."""
+
+    return _required_value("OPENAI_API_KEY", env)
+
+
+def require_executor_api_key(env: Mapping[str, str] | None = None) -> str:
+    """Return the separately scoped executor credential without displaying it."""
+
+    return _required_value("OPENAI_EXECUTOR_API_KEY", env)
+
+
+def credential_presence(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Report credential readiness without exposing any credential property."""
 
     source = os.environ if env is None else env
-    value = source.get("OPENAI_API_KEY", "")
-    if not value.strip():
-        raise RuntimeError(
-            "OPENAI_API_KEY is required for the real Agents API acceptance run"
-        )
-    return value
+    return {
+        "OPENAI_API_KEY": "present" if source.get("OPENAI_API_KEY", "").strip() else "missing",
+        "OPENAI_EXECUTOR_API_KEY": (
+            "present" if source.get("OPENAI_EXECUTOR_API_KEY", "").strip() else "missing"
+        ),
+    }
 
 
-def session_payload() -> dict[str, object]:
+def require_runtime_identifiers(env: Mapping[str, str] | None = None) -> tuple[str, str]:
+    """Read non-secret saved-agent/project identifiers from the local environment."""
+
+    return (
+        _required_value(AGENT_ID_ENV_VAR, env),
+        _required_value(OPENAI_PROJECT_ID_ENV_VAR, env),
+    )
+
+
+def session_payload(
+    agent_id: str | None = None,
+    project_id: str | None = None,
+) -> dict[str, object]:
     """Build the saved-agent reference plus the requested session overrides."""
 
+    if agent_id is None or project_id is None:
+        configured_agent_id, configured_project_id = require_runtime_identifiers()
+        agent_id = agent_id or configured_agent_id
+        project_id = project_id or configured_project_id
+
     return {
-        "agent_id": AGENT_ID,
+        "agent_id": agent_id,
         "agent": {
             "model": MODEL,
             "instructions": AGENT_INSTRUCTIONS,
@@ -69,7 +106,6 @@ def session_payload() -> dict[str, object]:
         "metadata": {
             "experiment": "armie-operational-intelligence",
             "experiment_version": EXPERIMENT_VERSION,
-            "openai_project_id": OPENAI_PROJECT_ID,
+            "openai_project_id": project_id,
         },
     }
-

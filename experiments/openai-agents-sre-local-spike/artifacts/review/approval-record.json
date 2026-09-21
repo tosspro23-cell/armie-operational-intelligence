@@ -1,0 +1,6 @@
+{
+  "status": "not_reached",
+  "approved": false,
+  "mutation_before_approval": false,
+  "reason": "No recommendation was produced because credential readiness failed before session creation"
+}

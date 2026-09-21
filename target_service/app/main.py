@@ -45,6 +45,9 @@ config = RuntimeConfig.from_mapping(
 deployment = _read_json(
     os.environ.get("DEPLOYMENT_METADATA_PATH", "/app/metadata/deployment.json")
 )
+incident_timeline = _read_json(
+    os.environ.get("INCIDENT_TIMELINE_PATH", "/app/metadata/incident_timeline.json")
+)
 service = SyntheticPaymentService(config)
 logger = JsonlLogger(os.environ.get("LOG_PATH", "/app/logs/service.jsonl"))
 metrics_path = Path(os.environ.get("METRICS_PATH", "/app/shared/metrics.json"))
@@ -107,6 +110,25 @@ def downstream_diagnostics() -> dict[str, Any]:
         "warning_threshold_ms": config.dependency_warning_threshold_ms,
     }
     logger.emit("downstream_diagnostic_read", **payload)
+    return payload
+
+
+@app.get("/diagnostics/timeline")
+def incident_timeline_diagnostics() -> dict[str, Any]:
+    """Return a fresh control-plane observation for the second investigation turn."""
+
+    payload = dict(incident_timeline)
+    logger.emit(
+        "incident_timeline_diagnostic_read",
+        source=payload.get("source"),
+        timeout_budget_ms=payload.get("timeout_budget_ms"),
+        pre_incident_latency_ms=payload.get("pre_incident_observation", {}).get(
+            "downstream_latency_ms"
+        ),
+        incident_latency_ms=payload.get("incident_observation", {}).get(
+            "downstream_latency_ms"
+        ),
+    )
     return payload
 
 

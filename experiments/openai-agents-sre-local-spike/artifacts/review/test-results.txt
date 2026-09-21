@@ -1,0 +1,36 @@
+python3 -m compileall -q controller target_service tests
+PASS
+
+python3 -m unittest discover -s tests -v
+Ran 21 tests in 0.004s
+OK (skipped=1 opt-in Docker integration test)
+
+ARMIE_RUN_DOCKER_INTEGRATION=1 python3 -m unittest tests.test_docker_integration -v
+Ran 1 test in 4.706s
+OK
+
+git diff --check
+PASS
+
+docker compose -f docker-compose.yml build sre_environment
+PASS; recorded codex-cli 0.156.0-alpha.9
+
+Docker smoke:
+docker run --rm busybox:latest echo docker-ok
+PASS; output=docker-ok
+
+Local Docker acceptance:
+target health: PASS (HTTP 200)
+timeline contradiction evidence: PASS (118 ms/200 before incident; 168 ms/504 during incident)
+checkout fault: PASS (real HTTP 504)
+structured logs/deployment/config/runbook: PASS
+executor reach/read/read-only-write-boundary: PASS
+fault reproducibility after target force-recreate: PASS
+approved remediation integration: PASS (explicit approval; target recreated with RESET_RUNTIME_CONFIG=0; checkout HTTP 200)
+
+Credential presence check (values not displayed):
+OPENAI_API_KEY=missing
+OPENAI_EXECUTOR_API_KEY=missing
+
+Controller real run credential boundary:
+not executed in this review-fix validation; no Agents API session was created.
