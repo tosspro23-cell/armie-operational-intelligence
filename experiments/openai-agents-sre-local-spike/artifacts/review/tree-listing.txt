@@ -17,6 +17,7 @@ docker-compose.yml
 experiments/openai-agents-sre-local-spike/artifacts/review/
 fixtures/deployment.json
 fixtures/downstream_history.json
+fixtures/incident_timeline.json
 fixtures/runtime_config_fault.json
 fixtures/runtime_config_safe.json
 sre_environment/Dockerfile
@@ -31,5 +32,6 @@ target_service/entrypoint.sh
 target_service/requirements.txt
 tests/__init__.py
 tests/test_controller.py
+tests/test_docker_integration.py
 tests/test_domain.py
 tests/test_session_continuity.py

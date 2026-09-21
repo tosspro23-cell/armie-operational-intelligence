@@ -272,6 +272,7 @@ class SessionRunner:
                 "outcome": outcome,
                 "terminal_event": terminal_event,
                 "events": list(monitor.seen),
+                "items": items,
             }
         finally:
             monitor.stop()

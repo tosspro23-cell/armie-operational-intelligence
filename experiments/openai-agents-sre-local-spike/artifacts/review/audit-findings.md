@@ -12,6 +12,18 @@ Corrected before this validation attempt:
 - no volume deletion in Compose startup;
 - deterministic denied-approval and executor-environment tests.
 
+Corrected from the independent review in this validation attempt:
+
+- approved remediation now clears `RESET_RUNTIME_CONFIG` before recreating only
+  the target, with a real Docker integration test proving checkout recovery;
+- final turn Markdown is extracted from the completed assistant Session Item
+  and text artifacts are redacted before persistence;
+- signed URLs embedded in free-form strings are scrubbed;
+- the second-turn evidence is a fresh target timeline observation rather than
+  a repeat of the downstream diagnostic;
+- the executor workspace uses the Compose service name `target`;
+- the executor records the installed Codex CLI version.
+
 Not demonstrated because credential readiness failed before session creation:
 
 - real Agents API session creation;

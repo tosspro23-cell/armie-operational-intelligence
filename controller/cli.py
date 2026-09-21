@@ -77,19 +77,52 @@ def compose_stop() -> None:
         return
 
 
-def compact_agent_text(payload: Any) -> list[str]:
-    found: list[str] = []
-    if isinstance(payload, dict):
-        for key, value in payload.items():
-            if key in {"text", "output_text", "delta"} and isinstance(value, str):
-                if value.strip():
-                    found.append(value.strip())
-            else:
-                found.extend(compact_agent_text(value))
-    elif isinstance(payload, list):
-        for item in payload:
-            found.extend(compact_agent_text(item))
-    return found
+def _content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            text = part.get("text")
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+        return "\n".join(parts).strip()
+    return ""
+
+
+def extract_final_assistant_text(items: Any) -> str | None:
+    """Extract the latest completed assistant message from session items.
+
+    Streaming deltas and command/tool outputs are deliberately excluded. The
+    API's persisted session items are the source of truth for the final turn
+    answer after a completed turn.
+    """
+
+    if not isinstance(items, dict) or not isinstance(items.get("data"), list):
+        return None
+    candidates: list[str] = []
+    for item in items["data"]:
+        if not isinstance(item, dict):
+            continue
+        item_type = str(item.get("type", "")).lower()
+        is_assistant_message = item.get("role") == "assistant" or item_type in {
+            "agent_session_assistant_message",
+            "assistant_message",
+        }
+        if item_type == "message" and item.get("role") != "user":
+            is_assistant_message = True
+        if not is_assistant_message:
+            continue
+        if item.get("status") in {"in_progress", "incomplete"}:
+            continue
+        text = _content_text(item.get("content"))
+        if not text and isinstance(item.get("text"), str):
+            text = item["text"].strip()
+        if text:
+            candidates.append(text)
+    return candidates[-1] if candidates else None
 
 
 def write_turn_artifacts(
@@ -98,16 +131,16 @@ def write_turn_artifacts(
     label: str,
     turn: dict[str, Any],
 ) -> None:
-    """Persist one turn's event slice and final streamed text separately."""
+    """Persist one turn's event slice and API item-derived final text."""
 
     events = turn.get("events", [])
-    text_parts: list[str] = []
     with (run_dir / f"{label}_events.jsonl").open("w", encoding="utf-8") as handle:
         for raw_name, payload in events:
             record = {"raw_event_name": raw_name, "event": redact(payload)}
             handle.write(json.dumps(record, sort_keys=True) + "\n")
-            text_parts.extend(compact_agent_text(payload))
-    final_text = "\n\n".join(text_parts).strip() or "No streamed model text was captured."
+    final_text = extract_final_assistant_text(turn.get("items"))
+    if final_text is None:
+        final_text = "No completed assistant message item was captured."
     capture.write_text(f"{label}_final.md", final_text + "\n")
 
 
@@ -211,15 +244,20 @@ def run_real(approve_remediation: bool, keep_target: bool) -> int:
         )
         write_turn_artifacts(run_dir, capture, "initial_investigation", turn)
 
-        contradiction = request_json("/diagnostics/downstream")
+        contradiction = request_json("/diagnostics/timeline")
         capture.controller("contradictory_observation", contradiction)
         contradiction_message = (
-            "A fresh read-only diagnostic has arrived. It reports the downstream "
-            f"dependency status as {contradiction['body'].get('status')!r}, observed "
-            f"latency {contradiction['body'].get('observed_latency_ms')} ms, and "
-            f"warning={contradiction['body'].get('warning')}. Reassess the timeline, "
-            "your leading and competing hypotheses, confidence, and safest next step. "
-            "Do not make changes. Cite the evidence you used."
+            "A fresh read-only control-plane timeline diagnostic has arrived. It "
+            f"reports that the {contradiction['body'].get('timeout_budget_ms')} ms "
+            "checkout timeout budget was first observed before the deployment, "
+            f"checkout was {contradiction['body'].get('pre_incident_observation', {}).get('checkout_status')} "
+            f"when dependency latency was {contradiction['body'].get('pre_incident_observation', {}).get('downstream_latency_ms')} ms, "
+            "and checkout was "
+            f"{contradiction['body'].get('incident_observation', {}).get('checkout_status')} "
+            f"when latency rose to {contradiction['body'].get('incident_observation', {}).get('downstream_latency_ms')} ms. "
+            "Reassess the timeline, your leading and competing hypotheses, "
+            "confidence, and safest next step. Do not make changes. Cite the "
+            "evidence you used."
         )
         turn = runner.run_turn("contradictory_evidence_reassessment", contradiction_message)
         write_turn_artifacts(run_dir, capture, "contradictory_evidence_reassessment", turn)

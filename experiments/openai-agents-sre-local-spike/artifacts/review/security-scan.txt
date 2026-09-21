@@ -1,7 +1,12 @@
-Tracked tree likely-secret scan: PASS (no likely credential values; .env.example contains placeholders only).
-Staged diff likely-secret scan: PASS (no likely credential values after excluding documented .env.example placeholders).
-All-Git-history credential-shaped scan: PASS (no credential-shaped matches).
-Expanded Compose credential-value scan: PASS (no interpolated credential values included).
+Working-tree likely-secret scan: PASS (no likely credential values; the only
+signed-URL match is the intentional redaction test fixture; .env.example
+contains placeholders only).
+Pending-diff likely-secret scan: PASS (no likely credential values after
+excluding documented placeholder names and the intentional redaction fixture).
+All-Git-history credential-shaped scan: PASS for actual credential values; the
+matches are source regex/tests and placeholder-only review text, not secrets.
+Expanded Compose credential-value scan: PASS (no interpolated credential values
+included).
 Authorization headers, signed URLs, and full environment dumps were not included in review evidence.
 Public-readiness: not recommended yet; the current head uses local placeholders,
 but the existing base Git history contains the supplied non-secret agent/project

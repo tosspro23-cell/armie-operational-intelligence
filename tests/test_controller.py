@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from controller.config import (
     credential_presence,
@@ -19,6 +19,7 @@ from controller.remediation import (
     approval_from_text,
     require_approval,
 )
+from controller.cli import extract_final_assistant_text
 from controller.runner import ExecutorProcess
 
 
@@ -109,6 +110,64 @@ class ControllerTests(unittest.TestCase):
             self.assertIn("[REDACTED]", content)
             self.assertNotIn("test-token-placeholder", content)
             self.assertNotIn("executor.invalid", content)
+            capture.write_text(
+                "turn_final.md",
+                "Authorization: Bearer test-placeholder "
+                "https://executor.invalid/connect?signature=secret",
+            )
+            text_content = (Path(directory) / "turn_final.md").read_text()
+            self.assertNotIn("test-placeholder", text_content)
+            self.assertNotIn("executor.invalid", text_content)
+
+    def test_free_text_redaction_scrubs_signed_urls_and_assignments(self) -> None:
+        sanitized = redact(
+            "remote=https://executor.invalid/connect?signature=secret&expires=123 "
+            "OPENAI_EXECUTOR_API_KEY=ordinary-looking-value"
+        )
+        self.assertNotIn("executor.invalid", sanitized)
+        self.assertNotIn("ordinary-looking-value", sanitized)
+        self.assertIn("[REDACTED_SIGNED_URL]", sanitized)
+
+    def test_final_text_comes_from_completed_assistant_item(self) -> None:
+        items = {
+            "data": [
+                {"type": "agent_command_execution", "output_text": "tool output"},
+                {
+                    "type": "agent_session_assistant_message",
+                    "status": "completed",
+                    "content": [{"type": "output_text", "text": "final answer"}],
+                },
+            ]
+        }
+        self.assertEqual(extract_final_assistant_text(items), "final answer")
+
+    def test_incomplete_assistant_item_is_not_final_text(self) -> None:
+        items = {
+            "data": [
+                {
+                    "role": "assistant",
+                    "status": "incomplete",
+                    "content": [{"type": "output_text", "text": "partial"}],
+                }
+            ]
+        }
+        self.assertIsNone(extract_final_assistant_text(items))
+
+    def test_approved_remediation_clears_reset_flag_before_recreate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            capture = EventCapture(Path(directory))
+            with patch("controller.remediation.config.RUNTIME_ROOT", Path(directory)), patch(
+                "controller.remediation.config.REPO_ROOT", Path(directory)
+            ), patch("controller.remediation.subprocess.run") as run:
+                run.side_effect = [
+                    Mock(returncode=0, stdout="target-id\n", stderr=""),
+                    Mock(returncode=0, stdout="", stderr=""),
+                    Mock(returncode=0, stdout="started\n", stderr=""),
+                ]
+                apply_known_safe_remediation(capture, approved=True)
+                recreate_call = run.call_args_list[-1]
+                self.assertEqual(recreate_call.kwargs["env"]["RESET_RUNTIME_CONFIG"], "0")
+                self.assertIn("--force-recreate", recreate_call.args[0])
 
     def test_redaction_removes_credential_fields_not_just_key_patterns(self) -> None:
         sanitized = redact({"OPENAI_API_KEY": "ordinary-looking-value", "safe": "value"})

@@ -1,12 +1,11 @@
-# SHA-256 manifest for sanitized review evidence; the manifest excludes itself.
-0c4e2a39d73f15727588728d3f921e09813911cd7ae7541f2c5de7bd5a380c9b  experiments/openai-agents-sre-local-spike/artifacts/review/LIVE_RUN_SUMMARY.md
+5efacfd8ac571b65182bf1707397a58c558b302871effa2f5ed439caa7729f43  experiments/openai-agents-sre-local-spike/artifacts/review/LIVE_RUN_SUMMARY.md
 ec75c33e4f95f44ce82e3e91abb433c7cdc79ccbb3d3435a47932be7b84abc9a  experiments/openai-agents-sre-local-spike/artifacts/review/approval-record.json
-1054e73f628613286179b9db4bbebb7ece7e80b27b9164d371ca86b05fdf2c06  experiments/openai-agents-sre-local-spike/artifacts/review/audit-findings.md
+eba80a72e7cfd68f8cb43dc8a098cb680418d95f755b23a82e165c2f50b21a8b  experiments/openai-agents-sre-local-spike/artifacts/review/audit-findings.md
 d9906223640978f18f5588983d1302c1cf727c284e2c19475f4ce25fec6e13d5  experiments/openai-agents-sre-local-spike/artifacts/review/docker-diagnostics.md
-d4b0c55236f542f5aa02f893516a6e723b69085d532fbe4ba7c6a78ac8834725  experiments/openai-agents-sre-local-spike/artifacts/review/local-service-validation.md
+70c4833cf0dd281463b608f44d9bb539fd380cd1a7235914d329ba9f99a6a11b  experiments/openai-agents-sre-local-spike/artifacts/review/local-service-validation.md
 54785ebcec554842c446b2d03103f248812cd88c311846b2876bea3e48eaf0ea  experiments/openai-agents-sre-local-spike/artifacts/review/payload-audit.txt
-246574c990df438c1cc95f8470c4acd25551b21cc7dc06ee17cceacafd9f51e6  experiments/openai-agents-sre-local-spike/artifacts/review/runtime-identity.json
-2387eb546bc3f823a17afa90963ac2f550db0037f99d2413a3c9e44f21f0b18b  experiments/openai-agents-sre-local-spike/artifacts/review/security-scan.txt
+aa812b24128c4f553024ee337eb1f7e3a723f68fb0632c001273f2c7738a4afa  experiments/openai-agents-sre-local-spike/artifacts/review/runtime-identity.json
+c2fb9f826ea5faf0c7574a6326c313b6af0eab3e0576e2b0f763d309e2afd52a  experiments/openai-agents-sre-local-spike/artifacts/review/security-scan.txt
 dadbcf401ffcf56de934b39ffba9a5462644863ed1266da945b7a6fdcc42227c  experiments/openai-agents-sre-local-spike/artifacts/review/session-metadata.redacted.json
-e97fe76fd01273239cf6ff98f433d9e91e0ae377dbe0aa7d6683edb4b07bb55f  experiments/openai-agents-sre-local-spike/artifacts/review/test-results.txt
-58e302df9cf2322883208aa580a0a8bcd41128764101f97b9473ff549cb6d035  experiments/openai-agents-sre-local-spike/artifacts/review/tree-listing.txt
+fc36079fe98f3ce689254172de313d0495ea1a16ffe05e97784cc7fa34c99a97  experiments/openai-agents-sre-local-spike/artifacts/review/test-results.txt
+de431e770d0cf495e71ee984358f2654d2de045a465a5d8ebf8e65080dfe333f  experiments/openai-agents-sre-local-spike/artifacts/review/tree-listing.txt

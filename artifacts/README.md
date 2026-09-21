@@ -11,7 +11,8 @@ Runtime outputs are intentionally not committed. A run directory is named
 - `agents_api_events.jsonl`: every observable SSE event payload from the Agents
   API, with local capture time and elapsed milliseconds.
 - `executor.log`: stdout/stderr from the isolated `codex exec-server` Docker
-  process. Credentials are never written to this file.
+  process, including the concrete installed Codex CLI version. Credentials are
+  never written to this file.
 - `target_probe.jsonl`: actual HTTP responses used to prove health, fault, and
   post-remediation state.
 - `session.json`: the API's session creation response after field-aware

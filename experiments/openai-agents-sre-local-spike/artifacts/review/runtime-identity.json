@@ -7,7 +7,8 @@
   "experiment": "armie-operational-intelligence",
   "experiment_version": "spike-001-live-validation",
   "base_commit": "80c4c43cd14aaba3678323c96ee9806b606a3200",
-  "git_commit": "2976ab250e74ebf65abf87e92bb851138c332afc",
-  "validation_git_state": "working_tree_modified_network_fix_and_evidence_pending_commit",
+  "git_commit": "8e26a0cbb778f35420340d90b7c71edc29c5bbc0",
+  "validation_git_state": "working_tree_with_independent_review_fixes_before_commit",
+  "local_validation_date": "2026-09-21",
   "target_service_version": "synthetic-payment-api-2026.09.20.2"
 }

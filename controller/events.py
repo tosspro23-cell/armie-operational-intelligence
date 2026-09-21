@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 from . import config
 
@@ -16,6 +17,26 @@ SECRET_PATTERN = re.compile(
     r"(?:sk-[A-Za-z0-9_-]{8,}|(?:key|token|secret)[-_][A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._~-]{8,})",
     re.IGNORECASE,
 )
+SECRET_ASSIGNMENT_PATTERN = re.compile(
+    r"\b(OPENAI_API_KEY|OPENAI_EXECUTOR_API_KEY|CODEX_API_KEY|AUTHORIZATION)\s*"
+    r"[:=]\s*(?:Bearer\s+)?[^\s,;]+",
+    re.IGNORECASE,
+)
+URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+SENSITIVE_QUERY_KEYS = {
+    "access_token",
+    "expires",
+    "expires_at",
+    "key",
+    "signature",
+    "sig",
+    "token",
+    "x-amz-algorithm",
+    "x-amz-credential",
+    "x-amz-date",
+    "x-amz-expires",
+    "x-amz-signature",
+}
 SENSITIVE_KEYS = {
     "authorization",
     "api_key",
@@ -33,6 +54,28 @@ SENSITIVE_KEYS = {
 }
 
 
+def _redact_string(value: str) -> str:
+    sanitized = SECRET_PATTERN.sub("[REDACTED]", value)
+    sanitized = SECRET_ASSIGNMENT_PATTERN.sub(
+        lambda match: f"{match.group(1)}=[REDACTED]", sanitized
+    )
+
+    def scrub_url(match: re.Match[str]) -> str:
+        candidate = match.group(0)
+        try:
+            query_keys = {
+                name.lower()
+                for name, _ in parse_qsl(urlsplit(candidate).query, keep_blank_values=True)
+            }
+        except ValueError:
+            query_keys = set()
+        if query_keys & SENSITIVE_QUERY_KEYS:
+            return "[REDACTED_SIGNED_URL]"
+        return candidate
+
+    return URL_PATTERN.sub(scrub_url, sanitized)
+
+
 def redact(value: Any, key: str | None = None) -> Any:
     if isinstance(value, dict):
         redacted: dict[str, Any] = {}
@@ -48,7 +91,7 @@ def redact(value: Any, key: str | None = None) -> Any:
     if isinstance(value, str):
         if key in SENSITIVE_KEYS:
             return "[REDACTED]"
-        return SECRET_PATTERN.sub("[REDACTED]", value)
+        return _redact_string(value)
     return value
 
 
@@ -87,7 +130,10 @@ class EventCapture:
         )
 
     def write_text(self, name: str, content: str) -> None:
-        (self.run_dir / name).write_text(content, encoding="utf-8")
+        sanitized = redact(content)
+        if not isinstance(sanitized, str):
+            raise TypeError("text artifact redaction must return text")
+        (self.run_dir / name).write_text(sanitized, encoding="utf-8")
 
 
 def git_commit() -> str:
