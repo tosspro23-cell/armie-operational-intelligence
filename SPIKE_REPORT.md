@@ -7,6 +7,11 @@ implemented and locally tested. The real Agents API run remains blocked before
 session creation because both required credentials are absent from this shell.
 No real Agents API session or live agent result is claimed.
 
+This branch also adds a local-only Vite/React console over the existing FastAPI
+controller. It has been built and opened against a real Docker target; it shows
+the fault, evidence, controller SSE events, and approval boundary. It does not
+create or simulate an Agent API session.
+
 ## 1. Experiment Objective
 
 Evaluate a real OpenAI Managed Agents API session, created from the saved SRE
@@ -14,6 +19,21 @@ agent definition, investigating one deterministic local SRE incident through a
 self-hosted Docker execution environment.
 
 ## 2. Implemented Runtime Topology
+
+The first UI slice is:
+
+```text
+React/Vite browser :5173
+        │ local HTTP control + SSE
+        ▼
+FastAPI controller :8787
+        ├─ real HTTP probes against synthetic-payment-api :18080
+        ├─ read-only evidence readers and controller events
+        └─ explicit allowlisted approval gate
+```
+
+The later live mode will add the Agents API event stream behind this same
+controller boundary.
 
 ```text
 controller (local Python)
@@ -154,6 +174,11 @@ No live Agents API JSONL stream was produced because credential readiness failed
 before session creation. Local controller and target evidence was captured in
 the ignored run directory and summarized in the tracked review evidence.
 
+The local console adds a separate SSE stream for sanitized controller lifecycle
+events. Browser-visible evidence is labelled as observed, controller-owned, or
+reserved for a future live Agent run; it does not present private model
+chain-of-thought as UI content.
+
 ## 16. Failures and Limitations
 
 The implementation audit found that the prior controller incorrectly reused
@@ -192,7 +217,10 @@ was created during this validation.
 The relevant implementation changes are under `.gitignore`, `README.md`,
 `.env.example`, `artifacts/README.md`, `controller/`, `docker-compose.yml`,
 `fixtures/incident_timeline.json`, `sre_environment/`, `target_service/`, and
-`tests/`. Generated runtime outputs remain under ignored `artifacts/` paths.
+`tests/`. This branch additionally adds `UI_SPEC.md`, `ui/`,
+`controller/web_api.py`, `controller/requirements-ui.txt`,
+`scripts/start_sre_ui.sh`, and `tests/test_web_api.py`. Generated runtime
+outputs remain under ignored `artifacts/` paths.
 `AUDIT_FINDINGS.md` records the pre-fix audit in the original local worktree and
 must be reconciled before relying on that worktree's branch state.
 
@@ -211,6 +239,12 @@ python3 -m controller.cli prepare
 docker compose up -d target
 python3 -m controller.cli probe
 curl -fsS http://127.0.0.1:18080/diagnostics/timeline
+python3 -m venv .ui-venv
+.ui-venv/bin/python -m pip install -r controller/requirements-ui.txt
+npm ci --prefix experiments/openai-agents-sre-local-spike/ui
+.ui-venv/bin/python -m uvicorn controller.web_api:app --app-dir . --host 127.0.0.1 --port 8787
+npm --prefix experiments/openai-agents-sre-local-spike/ui run dev -- --host 127.0.0.1 --port 5173
+# Open http://127.0.0.1:5173 and click Start local validation.
 export OPENAI_API_KEY='...'
 export OPENAI_EXECUTOR_API_KEY='...'
 export ARMIE_SRE_AGENT_ID='...'
@@ -227,7 +261,8 @@ the Codex conversation.
 
 Factual observation at this boundary: the code path, deterministic tests,
 Docker incident, controlled approved remediation, and fresh contradiction
-evidence are demonstrated, but the Agents API completion gate is not satisfied.
+evidence are demonstrated. The browser console is also locally demonstrated,
+but the Agents API completion gate is not satisfied.
 A follow-up run must set both credentials and runtime identifiers locally,
 create a real session, and capture the full same-session trace before this
 report can be marked complete. This spike does not decide the final ARMIE

@@ -53,6 +53,35 @@ python3 -m unittest discover -s tests -v
 
 The tests do not call OpenAI and do not replace the real acceptance run.
 
+## Open the local SRE Console
+
+The UI is a presentation layer over the same local controller. It does not
+create an Agent API session in this first slice; it shows real target evidence,
+controller lifecycle events, the read-only executor boundary, and the explicit
+approval gate. The browser receives no credentials and cannot issue arbitrary
+commands.
+
+From the repository root, install the isolated UI dependencies once:
+
+```bash
+python3 -m venv .ui-venv
+.ui-venv/bin/python -m pip install -r controller/requirements-ui.txt
+npm ci --prefix experiments/openai-agents-sre-local-spike/ui
+```
+
+Then start the controller and Vite in separate terminals:
+
+```bash
+.ui-venv/bin/python -m uvicorn controller.web_api:app --app-dir . --host 127.0.0.1 --port 8787
+npm --prefix experiments/openai-agents-sre-local-spike/ui run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open <http://127.0.0.1:5173> and choose **Start local validation**. The
+console will reproduce the real checkout fault, stream controller events over
+SSE, expose read-only logs/metrics/configuration/runbook evidence, and stop at
+the approval panel. The Agent panel remains `not connected` until the later
+real Agents API run.
+
 ## Prepare and run the local service
 
 ```bash

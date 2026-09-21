@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 .venv/
+.ui-venv/
+node_modules/
+experiments/openai-agents-sre-local-spike/ui/dist/
 .pytest_cache/
 .env
 .env.*
