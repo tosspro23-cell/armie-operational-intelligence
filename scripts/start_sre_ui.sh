@@ -36,4 +36,14 @@ frontend_pid=$!
 
 echo "ARMIE SRE Local Console: http://127.0.0.1:5173"
 echo "Controller API: http://127.0.0.1:8787"
-wait -n "$backend_pid" "$frontend_pid"
+
+# macOS ships Bash 3.2, which does not provide `wait -n`. Keep both
+# processes alive portably and let the cleanup trap stop the sibling when one
+# of them exits.
+if (( BASH_VERSINFO[0] >= 5 )); then
+  wait -n "$backend_pid" "$frontend_pid"
+else
+  while kill -0 "$backend_pid" 2>/dev/null && kill -0 "$frontend_pid" 2>/dev/null; do
+    sleep 1
+  done
+fi
