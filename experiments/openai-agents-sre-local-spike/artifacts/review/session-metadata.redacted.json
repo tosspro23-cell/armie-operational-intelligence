@@ -1,0 +1,10 @@
+{
+  "status": "not_created",
+  "session_id": null,
+  "environment_id": null,
+  "environment_remote_url": "[NOT_PERSISTED]",
+  "saved_agent_reused": false,
+  "local_docker_validation": "passed",
+  "local_incident_validation": "passed",
+  "reason": "Credential readiness gate failed before session creation"
+}

@@ -20,22 +20,28 @@ configuration and restart the synthetic target container.
 
 ## Current execution status
 
-Source and deterministic tests are implemented. A real acceptance run is only
-complete after `SPIKE_REPORT.md` records an actual session ID and the captured
-JSONL evidence under `artifacts/runs/`. Do not infer completion from a green
-unit-test run.
+Source, Docker, and the deterministic local incident validation are implemented
+and demonstrated. The real acceptance run is only complete after
+`SPIKE_REPORT.md` records an actual session ID and the captured JSONL evidence
+under `artifacts/runs/`. The current run stops before session creation when the
+two required credentials are missing. Do not infer completion from a green
+unit-test or local-service run.
 
 ## Prerequisites
 
 - Python 3.11+ for the controller and tests.
 - Docker Desktop with permission to access its Docker socket.
-- `OPENAI_API_KEY` exported in the invoking shell. The controller reads this
-  one environment variable only; it never prints or writes its value.
-- An API key with the Agents API permissions required by the official
-  self-hosted sandbox documentation. The documentation recommends a separate
-  restricted environment key for `CODEX_API_KEY`; this spike only accepts the
-  requested `OPENAI_API_KEY` input and passes it to the isolated executor at
-  runtime. That limitation is reported explicitly.
+- `OPENAI_API_KEY` exported in the invoking shell for the host-side controller.
+  It must be allowed to read/write Agents API sessions and write responses
+  (`api.agents.read`, `api.agents.write`, and `api.responses.write`). It is
+  never passed to the executor.
+- `OPENAI_EXECUTOR_API_KEY` exported in the invoking shell as a separate,
+  restricted Agents environment key. It must belong to the same organization,
+  project, and identity scope as the session. It is passed to the executor
+  only as `CODEX_API_KEY`.
+- `ARMIE_SRE_AGENT_ID` and `OPENAI_PROJECT_ID` set locally to the saved agent
+  and project identifiers supplied for this spike. They are non-secret runtime
+  identifiers and are intentionally not committed to source.
 - A valid `gh` authentication if the repository is to be created on GitHub.
 
 ## Run the deterministic checks
@@ -46,6 +52,35 @@ python3 -m unittest discover -s tests -v
 ```
 
 The tests do not call OpenAI and do not replace the real acceptance run.
+
+## Open the local SRE Console
+
+The UI is a presentation layer over the same local controller. It does not
+create an Agent API session in this first slice; it shows real target evidence,
+controller lifecycle events, the read-only executor boundary, and the explicit
+approval gate. The browser receives no credentials and cannot issue arbitrary
+commands.
+
+From the repository root, install the isolated UI dependencies once:
+
+```bash
+python3 -m venv .ui-venv
+.ui-venv/bin/python -m pip install -r controller/requirements-ui.txt
+npm ci --prefix experiments/openai-agents-sre-local-spike/ui
+```
+
+Then start the controller and Vite in separate terminals:
+
+```bash
+.ui-venv/bin/python -m uvicorn controller.web_api:app --app-dir . --host 127.0.0.1 --port 8787
+npm --prefix experiments/openai-agents-sre-local-spike/ui run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open <http://127.0.0.1:5173> and choose **Start local validation**. The
+console will reproduce the real checkout fault, stream controller events over
+SSE, expose read-only logs/metrics/configuration/runbook evidence, and stop at
+the approval panel. The Agent panel remains `not connected` until the later
+real Agents API run.
 
 ## Prepare and run the local service
 
@@ -65,14 +100,17 @@ read-only with the executor. The controller snapshots that volume to
 
 ```bash
 export OPENAI_API_KEY='...'
+export OPENAI_EXECUTOR_API_KEY='...'
+export ARMIE_SRE_AGENT_ID='agent-id-from-the-spike-brief'
+export OPENAI_PROJECT_ID='project-id-from-the-spike-brief'
 python3 -m controller.cli run
 ```
 
 The controller will:
 
 - prepare and start the target service;
-- create a real session using saved agent
-  `agent_8041a399c9434e048f081b847bd11b74bf6e735fde2f4685a4`;
+- create a real session using the saved agent ID supplied through
+  `ARMIE_SRE_AGENT_ID`;
 - apply the requested session overrides, including `gpt-5.6-luna`;
 - connect the self-hosted executor inside Docker;
 - send the initial investigation request without pasting the evidence;
@@ -86,14 +124,16 @@ the controller executes only the fixed safe-config restoration and target-only
 restart, then asks the same session to inspect actual recovery evidence. It
 does not execute arbitrary agent-provided commands.
 
-For a non-interactive run, the approval gate records a denied decision. To
-explicitly approve from a human-controlled shell, use:
+For a non-interactive run, the approval gate records a denied decision. An
+explicit human-controlled approval can use:
 
 ```bash
 python3 -m controller.cli run --approve-remediation
 ```
 
 That flag is intentionally explicit and still performs the same fixed action.
+Never put either key in a tracked `.env` file. If a local `.env` file is used
+by a shell wrapper, keep it ignored and restrict its permissions.
 
 ## Artifacts
 

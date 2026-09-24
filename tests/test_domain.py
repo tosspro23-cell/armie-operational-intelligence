@@ -40,3 +40,12 @@ class TargetServiceTests(unittest.TestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["checkout_path"], "degraded")
 
+    def test_contradictory_timeline_has_preincident_success_and_incident_timeout(self) -> None:
+        timeline = json.loads((ROOT / "fixtures" / "incident_timeline.json").read_text())
+        self.assertEqual(timeline["pre_incident_observation"]["downstream_latency_ms"], 118)
+        self.assertEqual(timeline["pre_incident_observation"]["checkout_status"], 200)
+        self.assertEqual(timeline["incident_observation"]["downstream_latency_ms"], 168)
+        self.assertEqual(timeline["incident_observation"]["checkout_status"], 504)
+        self.assertLess(
+            timeline["timeout_budget_first_observed_at"], timeline["deployment_loaded_at"]
+        )

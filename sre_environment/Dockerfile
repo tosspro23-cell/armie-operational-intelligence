@@ -5,6 +5,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @openai/codex@alpha
 
+# The spike intentionally follows the documented alpha channel, but records
+# the concrete installed CLI version in every executor log for reproducibility.
+RUN codex --version > /etc/codex-cli-version
+
 COPY sre_environment/entrypoint.sh /usr/local/bin/sre-executor-entrypoint
 COPY fixtures/deployment.json /opt/evidence/fixtures/deployment.json
 COPY fixtures/downstream_history.json /opt/evidence/fixtures/downstream_history.json
