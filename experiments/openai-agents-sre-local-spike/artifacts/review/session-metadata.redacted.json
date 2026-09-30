@@ -4,7 +4,10 @@
   "environment_id": null,
   "environment_remote_url": "[NOT_PERSISTED]",
   "saved_agent_reused": false,
+  "credential_readiness": "passed",
   "local_docker_validation": "passed",
   "local_incident_validation": "passed",
-  "reason": "Credential readiness gate failed before session creation"
+  "agents_api_result": "saved_agent_not_found_in_configured_project",
+  "agents_api_http_status": 404,
+  "reason": "Saved agent was not persisted in the configured project; session creation stopped before a session existed"
 }

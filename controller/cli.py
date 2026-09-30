@@ -53,8 +53,11 @@ def compose_up(force_recreate: bool = False) -> None:
         str(config.COMPOSE_FILE),
         "up",
         "-d",
-        "--build",
     ]
+    if os.environ.get("ARMIE_REUSE_LOCAL_IMAGES") == "1":
+        command.append("--no-build")
+    else:
+        command.append("--build")
     if force_recreate:
         command.append("--force-recreate")
     command.append("target")

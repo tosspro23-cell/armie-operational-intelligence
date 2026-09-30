@@ -91,6 +91,12 @@ curl -fsS http://127.0.0.1:18080/health
 python3 -m controller.cli probe
 ```
 
+By default the controller rebuilds the experiment images before a probe or
+acceptance run. If Docker Hub is temporarily unavailable and the required
+experiment images are already present locally, set
+`ARMIE_REUSE_LOCAL_IMAGES=1` for that run to use Compose `--no-build`. This is
+an explicit local-runtime fallback; it does not alter the image definitions.
+
 The service writes structured logs and metrics to a Docker named volume shared
 read-only with the executor. The controller snapshots that volume to
 `artifacts/runs/<run-id>/runtime/` and `artifacts/runtime/` after probing.

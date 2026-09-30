@@ -1,11 +1,11 @@
 # ARMIE Architecture Spike #001 — OpenAI Agents API local SRE runtime
 
 Status: Docker, the local synthetic incident, and the controlled approved
-remediation lifecycle are now live-demonstrated on
-`spike/openai-agents-sre-live-validation`. The independent review fixes are
-implemented and locally tested. The real Agents API run remains blocked before
-session creation because both required credentials are absent from this shell.
-No real Agents API session or live agent result is claimed.
+remediation lifecycle are live-demonstrated. The real Agents API attempt on
+2026-09-30 reached the API with both credentials present but stopped at session
+creation: the saved agent is not persisted in the newly selected project. No
+real Agents API session, environment connection, or live agent result is
+claimed. The saved agent was not replaced.
 
 This branch also adds a local-only Vite/React console over the existing FastAPI
 controller. It has been built and opened against a real Docker target; it shows
@@ -83,9 +83,12 @@ included in the initial user message.
 
 ## 5. Agent Investigation Trace
 
-Not reached. A real session was not created because the credential readiness
-gate reported both required variables missing. No agent-generated tool call,
-shell action, or model output was fabricated.
+Not reached. The controller reached the session-creation request with
+presence-only credential readiness passing, but OpenAI returned HTTP 404:
+`No persisted agent found` for the configured saved-agent reference and stated
+that session-local agent IDs cannot be reused. No agent-generated tool call,
+shell action, or model output was fabricated. This is a project/agent-scope
+blocker, not evidence that a replacement agent should be created.
 
 ## 6. Hypotheses Generated
 
@@ -132,7 +135,8 @@ same-session post-remediation verification is claimed yet.
 
 ## 11. Session Persistence Observations
 
-Not reached. There is no session ID to compare. The runner binds every
+Not reached. The API did not return a session ID, so there is no session ID to
+compare. The runner binds every
 follow-up to the session ID returned by the one session creation response and
 records retrieved session items after each turn.
 
@@ -198,10 +202,18 @@ extraction issue are corrected. The executor image records the installed
 `codex-cli 0.156.0-alpha.9` version in its runtime log; the Dockerfile still
 intentionally follows the alpha channel.
 
-Observed blockers on 2026-09-20:
+Observed blockers on 2026-09-20 and 2026-09-30:
 
 - `OPENAI_API_KEY` and `OPENAI_EXECUTOR_API_KEY` were both missing in the
   invoking environment. No session request was attempted.
+- On 2026-09-30 both credentials were present and the request reached the
+  Agents API, but the newly selected project could not resolve the saved agent
+  ID. The API returned HTTP 404 with `No persisted agent found` and instructed
+  that session-local agent IDs cannot be reused. No session or environment was
+  created. The smallest compliant next action is to create matching controller
+  and environment keys in the project that owns the saved agent, or otherwise
+  obtain an approved project-level access path; do not create a replacement
+  agent for this spike.
 - Docker Desktop 29.8.0 on `aarch64` initially left containers in `Created`,
   then passed the busybox smoke test after recovery. A stale network/project
   ownership conflict was resolved by using a unique experiment network.
@@ -250,11 +262,13 @@ npm ci --prefix experiments/openai-agents-sre-local-spike/ui
 .ui-venv/bin/python -m uvicorn controller.web_api:app --app-dir . --host 127.0.0.1 --port 8787
 npm --prefix experiments/openai-agents-sre-local-spike/ui run dev -- --host 127.0.0.1 --port 5173
 # Open http://127.0.0.1:5173 and click Start local validation.
+ARMIE_REUSE_LOCAL_IMAGES=1 \
+  .ui-venv/bin/python -m controller.cli probe
 export OPENAI_API_KEY='...'
 export OPENAI_EXECUTOR_API_KEY='...'
 export ARMIE_SRE_AGENT_ID='...'
 export OPENAI_PROJECT_ID='...'
-python3 -m controller.cli run
+ARMIE_REUSE_LOCAL_IMAGES=1 python3 -m controller.cli run
 ```
 
 The last command must be run by a human who understands the approval boundary,
@@ -267,8 +281,9 @@ the Codex conversation.
 Factual observation at this boundary: the code path, deterministic tests,
 Docker incident, controlled approved remediation, and fresh contradiction
 evidence are demonstrated. The browser console is also locally demonstrated,
-but the Agents API completion gate is not satisfied.
-A follow-up run must set both credentials and runtime identifiers locally,
-create a real session, and capture the full same-session trace before this
-report can be marked complete. This spike does not decide the final ARMIE
-architecture or recommend production adoption.
+but the Agents API completion gate is not satisfied. The first credentialed
+attempt proved the configured project cannot resolve the saved agent; it did
+not create a session. A follow-up run must use credentials scoped to the
+project that owns that saved agent, then create a real session and capture the
+full same-session trace before this report can be marked complete. This spike
+does not decide the final ARMIE architecture or recommend production adoption.

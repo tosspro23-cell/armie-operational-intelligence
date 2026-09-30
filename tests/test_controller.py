@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -13,6 +14,7 @@ from controller.config import (
     session_payload,
 )
 from controller.events import EventCapture, redact
+from controller.cli import compose_up
 from controller.remediation import (
     ApprovalRequired,
     apply_known_safe_remediation,
@@ -24,6 +26,15 @@ from controller.runner import ExecutorProcess
 
 
 class ControllerTests(unittest.TestCase):
+    def test_compose_can_reuse_existing_images_explicitly(self) -> None:
+        result = subprocess.CompletedProcess([], 0)
+        with patch.dict("os.environ", {"ARMIE_REUSE_LOCAL_IMAGES": "1"}, clear=False):
+            with patch("controller.cli.subprocess.run", return_value=result) as run:
+                compose_up()
+        command = run.call_args.args[0]
+        self.assertIn("--no-build", command)
+        self.assertNotIn("--build", command)
+
     def test_openai_key_validation_uses_only_named_variable(self) -> None:
         with self.assertRaises(RuntimeError):
             require_openai_api_key({})
