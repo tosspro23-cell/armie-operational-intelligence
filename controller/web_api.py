@@ -50,6 +50,148 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _read_json_file(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return records
+    for line in lines:
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            records.append(value)
+    return records
+
+
+def _latest_agents_run() -> Path | None:
+    root = config.ARTIFACTS_ROOT / "runs"
+    if not root.is_dir():
+        return None
+    candidates = [
+        path
+        for path in root.iterdir()
+        if path.is_dir()
+        and (path / "session.json").is_file()
+        and (path / "agents_api_events.jsonl").is_file()
+    ]
+    return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
+
+
+def _event_type_counts(records: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        payload = record.get("payload")
+        event = payload.get("event") if isinstance(payload, dict) else None
+        event_type = event.get("type") if isinstance(event, dict) else None
+        if isinstance(event_type, str):
+            counts[event_type] = counts.get(event_type, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _turn_snapshot(run_dir: Path, label: str) -> dict[str, Any]:
+    final_path = run_dir / f"{label}_final.md"
+    events_path = run_dir / f"{label}_events.jsonl"
+    final_text = ""
+    if final_path.is_file():
+        try:
+            final_text = redact(final_path.read_text(encoding="utf-8"))
+        except OSError:
+            final_text = ""
+    events = _read_jsonl(events_path)
+    event_types = _event_type_counts(events)
+    return {
+        "label": label,
+        "status": "completed" if final_text else "not_available",
+        "final": final_text,
+        "event_count": len(events),
+        "event_types": event_types,
+    }
+
+
+def live_run_snapshot() -> dict[str, Any]:
+    """Expose only redacted, read-only evidence from the latest real API run."""
+
+    run_dir = _latest_agents_run()
+    if run_dir is None:
+        return {"available": False, "message": "No real Agents API run artifacts are available."}
+
+    identity = _read_json_file(run_dir / "runtime_identity.json")
+    identity = redact(identity) if isinstance(identity, dict) else {}
+    controller_records = _read_jsonl(run_dir / "controller_events.jsonl")
+    agent_records = _read_jsonl(run_dir / "agents_api_events.jsonl")
+    controller_timeline = [
+        {
+            "kind": record.get("kind"),
+            "captured_at": record.get("captured_at"),
+        }
+        for record in controller_records
+        if isinstance(record.get("kind"), str)
+    ]
+    kinds = [record.get("kind") for record in controller_records]
+    proposal_path = run_dir / "remediation_proposal_final.md"
+    proposal_text = ""
+    if proposal_path.is_file():
+        try:
+            proposal_text = redact(proposal_path.read_text(encoding="utf-8"))
+        except OSError:
+            proposal_text = ""
+
+    probes = _read_jsonl(run_dir / "target_probe.jsonl")
+    checkout_probes = [
+        record for record in probes if str(record.get("label", "")).startswith("checkout_")
+    ]
+    latest_probe = probes[-1] if probes else {}
+    status = "running"
+    if "approval_decision" in kinds:
+        status = "approved_or_denied"
+    elif proposal_text:
+        status = "approval_pending"
+
+    return {
+        "available": True,
+        "run_id": run_dir.name,
+        "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime, tz=timezone.utc).isoformat(),
+        "status": status,
+        "identity": identity,
+        "target": {
+            "health": next((record for record in probes if record.get("label") == "health"), None),
+            "metrics": next((record for record in reversed(probes) if str(record.get("label", "")).startswith("metrics")), None),
+            "checkout_samples": len(checkout_probes),
+            "checkout_statuses": [record.get("status") for record in checkout_probes],
+            "latest_checkout": redact(checkout_probes[-1]) if checkout_probes else None,
+            "latest_probe": redact(latest_probe),
+        },
+        "session": {
+            "session_id": identity.get("agents_api_session_id"),
+            "environment_id": identity.get("agents_api_environment_id"),
+            "connected": "environment_connected" in kinds,
+            "model": identity.get("configured_model"),
+        },
+        "turns": [
+            _turn_snapshot(run_dir, "initial_investigation"),
+            _turn_snapshot(run_dir, "contradictory_evidence_reassessment"),
+            _turn_snapshot(run_dir, "remediation_proposal"),
+        ],
+        "agent_event_type_counts": _event_type_counts(agent_records),
+        "controller_timeline": controller_timeline[-80:],
+        "proposal": {
+            "text": proposal_text,
+            "mutation_executed": "remediation.applied" in kinds,
+            "approval_recorded": "approval_decision" in kinds,
+        },
+    }
+
+
 class LocalConsole:
     """Own the first-slice local validation lifecycle and its browser events."""
 
@@ -376,6 +518,11 @@ def backend_health() -> dict[str, Any]:
 @app.get("/api/state")
 def get_state() -> dict[str, Any]:
     return console.snapshot()
+
+
+@app.get("/api/live-run")
+def get_live_run() -> dict[str, Any]:
+    return live_run_snapshot()
 
 
 @app.get("/api/events")

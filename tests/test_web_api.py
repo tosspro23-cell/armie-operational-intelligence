@@ -1,14 +1,67 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from controller.web_api import ApprovalRequest, LocalConsole
+from controller.web_api import ApprovalRequest, LocalConsole, live_run_snapshot
 
 
 class WebConsoleContractTests(unittest.TestCase):
+    def test_live_run_snapshot_is_read_only_and_redacted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / "artifacts" / "runs" / "20261002T000000Z"
+            run_dir.mkdir(parents=True)
+            (run_dir / "session.json").write_text("{}", encoding="utf-8")
+            (run_dir / "runtime_identity.json").write_text(
+                json.dumps(
+                    {
+                        "agents_api_session_id": "sess_test",
+                        "agents_api_environment_id": "env_test",
+                        "configured_model": "gpt-6-luna",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "controller_events.jsonl").write_text(
+                "\n".join(
+                    json.dumps({"kind": kind, "captured_at": "2026-10-02T00:00:00Z"})
+                    for kind in ("session_created", "environment_connected")
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "agents_api_events.jsonl").write_text(
+                json.dumps(
+                    {
+                        "payload": {
+                            "event": {"type": "agent.session.turn.completed"}
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "target_probe.jsonl").write_text(
+                json.dumps({"label": "checkout_1", "status": 504}), encoding="utf-8"
+            )
+            (run_dir / "remediation_proposal_final.md").write_text(
+                "No API key here.\n", encoding="utf-8"
+            )
+            (run_dir / "initial_investigation_final.md").write_text(
+                "Observed local evidence.", encoding="utf-8"
+            )
+            with patch("controller.web_api.config.ARTIFACTS_ROOT", Path(directory) / "artifacts"):
+                snapshot = live_run_snapshot()
+
+        self.assertTrue(snapshot["available"])
+        self.assertEqual(snapshot["status"], "approval_pending")
+        self.assertTrue(snapshot["session"]["connected"])
+        self.assertIn("agent.session.turn.completed", snapshot["agent_event_type_counts"])
+        self.assertFalse(snapshot["proposal"]["mutation_executed"])
+
     def test_local_console_is_explicitly_not_connected_to_agent_api(self) -> None:
         console = LocalConsole()
         snapshot = console.snapshot()

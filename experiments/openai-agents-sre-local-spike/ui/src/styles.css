@@ -116,6 +116,28 @@ button:not(:disabled):hover { transform: translateY(-1px); }
 .event-number { color: #6d89a8; font-family: monospace; font-size: 10px; }
 .event-row strong { display: block; color: #c7d9ee; font-family: monospace; font-size: 10px; font-weight: 600; }
 .event-row small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+.live-run-panel { margin: 16px 0; border-color: rgba(177, 133, 255, .3); }
+.live-run-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+.live-run-meta > div, .live-facts > div { display: flex; flex-direction: column; gap: 7px; padding: 11px; border: 1px solid rgba(141,171,207,.14); border-radius: 8px; background: rgba(7,17,31,.34); }
+.live-run-meta span, .live-facts span, .subsection-label { color: #8ea5c1; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.live-run-meta code { overflow: hidden; color: #c9b6ff; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.live-good { color: var(--green); }
+.live-warn { color: var(--amber); }
+.live-run-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); gap: 18px; margin-top: 18px; }
+.live-turn-list { display: grid; gap: 8px; margin-top: 10px; }
+.live-turn { padding: 10px 11px; border: 1px solid rgba(141,171,207,.15); border-radius: 8px; background: rgba(7,17,31,.34); }
+.live-turn summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; color: #d5e5f7; font-size: 11px; }
+.live-turn summary span { color: var(--muted); font-size: 10px; }
+.live-turn .code-block { max-height: 280px; margin-top: 10px; }
+.live-facts { display: grid; gap: 8px; margin-top: 10px; }
+.live-facts > div { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.live-facts strong { color: #dce9f8; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; text-align: right; }
+.event-label { margin-top: 18px; }
+.event-chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.event-chip-list span { padding: 6px 7px; border: 1px solid rgba(177,133,255,.2); border-radius: 999px; color: #c9b6ff; background: rgba(177,133,255,.08); font-family: monospace; font-size: 9px; }
+.live-proposal { margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(141,171,207,.13); }
+.live-proposal .code-block { max-height: 300px; margin-top: 10px; }
+.live-approval-note { margin-top: 10px; color: var(--amber); font-size: 11px; line-height: 1.5; }
 .approval-panel.attention { border-color: rgba(245, 189, 99, .42); box-shadow: 0 0 0 1px rgba(245,189,99,.08), 0 18px 50px rgba(0,0,0,.2); }
 .proposal-tag { margin-top: 15px; color: var(--amber); font-size: 9px; letter-spacing: .12em; font-weight: 800; }
 .proposal-scope { color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -190,4 +212,4 @@ button:not(:disabled):hover { transform: translateY(-1px); }
 .footer { justify-content: space-between; gap: 15px; margin-top: 22px; padding-top: 17px; border-top: 1px solid rgba(141,171,207,.14); color: #7188a4; font-size: 10px; }
 
 @media (max-width: 1050px) { .content-grid { grid-template-columns: 1fr; } .side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
-@media (max-width: 760px) { .app-shell { width: min(100% - 24px, 600px); padding-top: 16px; } .topbar, .notice-bar, .hero-title-row, .footer { align-items: flex-start; flex-direction: column; } .topbar-meta { align-items: flex-start; gap: 8px; margin-top: 12px; } .hero-grid, .metric-grid, .metric-cards, .side-column, .payment-layout { grid-template-columns: 1fr; } .hero-card, .agent-card, .panel { padding: 16px; } .metric-cards { gap: 7px; } .fact-row { align-items: flex-start; flex-direction: column; gap: 8px; } .approval-actions { flex-direction: column; } .footer { gap: 8px; } .modal-backdrop { padding: 12px; } .details-modal { padding: 16px; } .modal-footnote { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 760px) { .app-shell { width: min(100% - 24px, 600px); padding-top: 16px; } .topbar, .notice-bar, .hero-title-row, .footer { align-items: flex-start; flex-direction: column; } .topbar-meta { align-items: flex-start; gap: 8px; margin-top: 12px; } .hero-grid, .metric-grid, .metric-cards, .side-column, .payment-layout, .live-run-meta, .live-run-grid { grid-template-columns: 1fr; } .hero-card, .agent-card, .panel { padding: 16px; } .metric-cards { gap: 7px; } .fact-row { align-items: flex-start; flex-direction: column; gap: 8px; } .approval-actions { flex-direction: column; } .footer { gap: 8px; } .modal-backdrop { padding: 12px; } .details-modal { padding: 16px; } .modal-footnote { align-items: flex-start; flex-direction: column; } }

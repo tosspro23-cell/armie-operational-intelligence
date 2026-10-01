@@ -117,7 +117,8 @@ The controller will:
 - prepare and start the target service;
 - create a real session using the saved agent ID supplied through
   `ARMIE_SRE_AGENT_ID`;
-- apply the requested session overrides, including `gpt-5.6-luna`;
+- apply the requested session overrides, including the current saved-agent
+  model `gpt-6-luna`;
 - connect the self-hosted executor inside Docker;
 - send the initial investigation request without pasting the evidence;
 - record streamed events and tool activity;

@@ -54,6 +54,43 @@ type Evidence = {
   config: JsonMap | null;
 };
 
+type LiveTurn = {
+  label: string;
+  status: string;
+  final: string;
+  event_count: number;
+  event_types: Record<string, number>;
+};
+
+type LiveRun = {
+  available: boolean;
+  run_id: string;
+  updated_at: string;
+  status: string;
+  identity: JsonMap;
+  target: {
+    health: JsonMap | null;
+    metrics: JsonMap | null;
+    checkout_samples: number;
+    checkout_statuses: unknown[];
+    latest_checkout: JsonMap | null;
+  };
+  session: {
+    session_id: string | null;
+    environment_id: string | null;
+    connected: boolean;
+    model: string | null;
+  };
+  turns: LiveTurn[];
+  agent_event_type_counts: Record<string, number>;
+  controller_timeline: { kind: string; captured_at: string }[];
+  proposal: {
+    text: string;
+    mutation_executed: boolean;
+    approval_recorded: boolean;
+  };
+};
+
 const initialState: ConsoleState = {
   mode: "local_deterministic",
   phase: "idle",
@@ -199,6 +236,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [paymentDetailsOpen, setPaymentDetailsOpen] = useState(false);
+  const [liveRun, setLiveRun] = useState<LiveRun | null>(null);
 
   const refreshState = useCallback(async () => {
     try {
@@ -260,6 +298,21 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [refreshEvidence, refreshState]);
 
+  const refreshLiveRun = useCallback(async () => {
+    try {
+      const next = await getJson<LiveRun | { available: false }>("/api/live-run");
+      setLiveRun(next.available ? next : null);
+    } catch {
+      // The observer is additive; the local console remains usable if it is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshLiveRun();
+    const timer = window.setInterval(() => void refreshLiveRun(), 2000);
+    return () => window.clearInterval(timer);
+  }, [refreshLiveRun]);
+
   const runAction = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setBackendError(null);
@@ -282,7 +335,16 @@ export default function App() {
   const timeline = responseBody(target.timeline);
   const healthStatus = statusOf(target.health);
   const checkoutStatus = statusOf(checkoutResponse);
-  const checkoutFailed = checkoutStatus !== "—" && checkoutStatus !== "200";
+  const liveCheckout = liveRun?.target.latest_checkout ?? null;
+  const liveHealth = liveRun?.target.health ?? null;
+  const liveMetrics = responseBody(liveRun?.target.metrics ?? null);
+  const liveCheckoutStatus = liveCheckout ? stringOf(liveCheckout.status) : "—";
+  const effectiveCheckoutResponse = liveCheckout ?? checkoutResponse;
+  const effectiveCheckout = responseBody(effectiveCheckoutResponse);
+  const effectiveCheckoutStatus = liveCheckout ? liveCheckoutStatus : checkoutStatus;
+  const effectiveHealthStatus = liveHealth ? statusOf(liveHealth) : healthStatus;
+  const effectiveMetrics = liveRun ? liveMetrics : metrics;
+  const checkoutFailed = effectiveCheckoutStatus !== "—" && effectiveCheckoutStatus !== "200";
   const verification = state.verification;
   const identity = state.identity;
   const preIncident = typeof timeline.pre_incident_observation === "object" && timeline.pre_incident_observation !== null ? timeline.pre_incident_observation as JsonMap : {};
@@ -293,16 +355,19 @@ export default function App() {
     { event: "incident_observation", timestamp: String(incident.window ?? "").split("/")[0], detail: `checkout HTTP ${stringOf(incident.checkout_status)} · dependency remained ${stringOf(incident.downstream_status)}` },
     { event: "contradictory_evidence", timestamp: "fresh observation", detail: stringOf(timeline.observation) },
   ] : [];
-  const timeoutRate = Number(metrics.checkout_attempts) > 0 ? Math.round((Number(metrics.checkout_timeouts ?? 0) / Number(metrics.checkout_attempts)) * 100) : null;
+  const timeoutRate = Number(effectiveMetrics.checkout_attempts) > 0 ? Math.round((Number(effectiveMetrics.checkout_timeouts ?? 0) / Number(effectiveMetrics.checkout_attempts)) * 100) : null;
   const latestEvents = useMemo(() => [...events].reverse(), [events]);
   const paymentAmount = formatAmountCents(checkout.amount_cents ?? 1099);
   const paymentDetail = {
-    status: checkoutStatus,
-    error_code: checkout.error_code,
-    request_id: checkout.request_id,
-    downstream_latency_ms: checkout.downstream_latency_ms,
+    status: effectiveCheckoutStatus,
+    error_code: effectiveCheckout.error_code,
+    request_id: effectiveCheckout.request_id,
+    downstream_latency_ms: effectiveCheckout.downstream_latency_ms,
     simulated_order: "ui-demo-order",
   };
+  const liveStatus = liveRun?.status === "approval_pending" ? "Approval pending" : liveRun?.status === "running" ? "Run in progress" : "Live run observed";
+  const liveEventTypes = Object.entries(liveRun?.agent_event_type_counts ?? {}).slice(-8);
+  const compactId = (value: string | null) => value ? `…${value.slice(-12)}` : "—";
 
   return (
     <main className="app-shell">
@@ -322,10 +387,10 @@ export default function App() {
 
       <section className="notice-bar">
         <div>
-          <strong>Deterministic validation mode</strong>
-          <span>This console is exercising the local target and controller boundary. No Agent API session is connected.</span>
+          <strong>{liveRun ? "Live Agents API approval preview" : "Deterministic validation mode"}</strong>
+          <span>{liveRun ? "This read-only view is showing the real Session evidence before the human approval gate. It cannot approve or apply remediation." : "This console is exercising the local target and controller boundary. No Agent API session is connected."}</span>
         </div>
-        <span className="provenance-chip controller">controller-owned</span>
+        <span className={`provenance-chip ${liveRun ? "agent" : "controller"}`}>{liveRun ? "real session observed" : "controller-owned"}</span>
       </section>
 
       {backendError ? <div className="error-banner"><strong>Controller notice</strong><span>{backendError}</span></div> : null}
@@ -341,13 +406,13 @@ export default function App() {
             <span className={`phase-pill ${phaseClass(state.phase)}`}><span className="dot" />{phaseLabels[state.phase] ?? state.phase}</span>
           </div>
           <div className="control-row">
-            <button className="primary-button" disabled={busy || state.phase === "remediation_running"} onClick={() => void runAction(() => postJson("/api/local/start"))}>
+            <button className="primary-button" disabled={busy || state.phase === "remediation_running" || Boolean(liveRun)} onClick={() => void runAction(() => postJson("/api/local/start"))}>
               <span>▶</span> Start local validation
             </button>
-            <button className="secondary-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/local/reset"))}>
+            <button className="secondary-button" disabled={busy || Boolean(liveRun)} onClick={() => void runAction(() => postJson("/api/local/reset"))}>
               Reset fault
             </button>
-            <button className="ghost-button" disabled={busy || state.phase === "idle"} onClick={() => void runAction(() => postJson("/api/local/stop"))}>
+            <button className="ghost-button" disabled={busy || state.phase === "idle" || Boolean(liveRun)} onClick={() => void runAction(() => postJson("/api/local/stop"))}>
               Stop target
             </button>
           </div>
@@ -362,19 +427,53 @@ export default function App() {
             <div className="agent-orbit"><span className="orbit-core">◎</span></div>
             <div>
               <h3>Agent API</h3>
-              <div className="agent-state"><span className="dot muted-dot" />{state.agent.status.split("_").join(" ")}</div>
+              <div className="agent-state"><span className={`dot ${liveRun?.session.connected ? "" : "muted-dot"}`} />{liveRun?.session.connected ? "connected" : state.agent.status.split("_").join(" ")}</div>
             </div>
           </div>
-          <p className="agent-message">{state.agent.message}</p>
-          <div className="agent-footnote"><span className="provenance-chip agent">agent evidence reserved for live run</span></div>
+          <p className="agent-message">{liveRun ? `Saved SRE Agent session is connected. ${liveStatus}. Investigation evidence is being observed from redacted artifacts.` : state.agent.message}</p>
+          <div className="agent-footnote"><span className="provenance-chip agent">{liveRun ? "live session evidence" : "agent evidence reserved for live run"}</span></div>
         </div>
       </section>
 
+      {liveRun ? <section className="panel live-run-panel">
+        <div className="panel-header"><div><div className="section-kicker">LIVE AGENTS API RUN</div><h3>Approval preview from the real Session</h3></div><span className="provenance-chip agent">read-only observer · {liveStatus}</span></div>
+        <p className="panel-description">The Workbench is reading the latest sanitized run artifacts. It shows observable final outputs and event metadata, not hidden chain-of-thought. The approval decision remains in the controller's explicit gate.</p>
+        <div className="live-run-meta">
+          <div><span>Session</span><code>{compactId(liveRun.session.session_id)}</code></div>
+          <div><span>Environment</span><code>{compactId(liveRun.session.environment_id)}</code></div>
+          <div><span>Model</span><code>{stringOf(liveRun.session.model)}</code></div>
+          <div><span>Connection</span><strong className={liveRun.session.connected ? "live-good" : "live-warn"}>{liveRun.session.connected ? "connected" : "not observed"}</strong></div>
+        </div>
+        <div className="live-run-grid">
+          <div>
+            <div className="subsection-label">Observable investigation turns</div>
+            <div className="live-turn-list">
+              {liveRun.turns.map((turn) => <details className="live-turn" key={turn.label} open={turn.label === "remediation_proposal"}>
+                <summary><strong>{turn.label.split("_").join(" ")}</strong><span>{turn.status} · {turn.event_count} events</span></summary>
+                <CodeBlock value={turn.final || "No final output captured yet."} />
+              </details>)}
+            </div>
+          </div>
+          <div>
+            <div className="subsection-label">Current target and safety state</div>
+            <div className="live-facts">
+              <div><span>Payment response</span><strong className={checkoutFailed ? "live-warn" : "live-good"}>{liveCheckoutStatus === "—" ? "—" : `HTTP ${liveCheckoutStatus}`}</strong></div>
+              <div><span>Observed checkout samples</span><strong>{String(liveRun.target.checkout_samples)}</strong></div>
+              <div><span>Mutation executed</span><strong className={liveRun.proposal.mutation_executed ? "live-warn" : "live-good"}>{liveRun.proposal.mutation_executed ? "yes" : "no"}</strong></div>
+              <div><span>Approval recorded</span><strong>{liveRun.proposal.approval_recorded ? "yes" : "no"}</strong></div>
+            </div>
+            <div className="subsection-label event-label">Agent event types</div>
+            <div className="event-chip-list">{liveEventTypes.map(([name, count]) => <span key={name}>{name} × {count}</span>)}</div>
+          </div>
+        </div>
+        <div className="live-proposal"><div className="subsection-label">Evidence-backed proposed remediation</div><CodeBlock value={liveRun.proposal.text || "Proposal not captured yet."} /><p className="live-approval-note">No mutation has occurred. Review this proposal, its risks, verification, and rollback in this panel before responding to the approval prompt.</p></div>
+      </section> : null}
+
       <section className="metric-grid">
-        <StatusPill label="Target health" value={healthStatus === "200" ? "Healthy" : healthStatus === "—" ? "Not observed" : `HTTP ${healthStatus}`} tone={healthStatus === "200" ? "success" : "neutral"} />
-        <StatusPill label="Checkout" value={checkoutStatus === "200" ? "Recovered" : checkoutFailed ? `HTTP ${checkoutStatus}` : "Not observed"} tone={checkoutFailed ? "danger" : checkoutStatus === "200" ? "success" : "neutral"} />
-        <StatusPill label="Evidence boundary" value={state.phase === "idle" ? "Not checked" : "Read-only verified"} tone={state.phase === "idle" ? "neutral" : "success"} />
-        <StatusPill label="Approval" value={state.approval ? stringOf(state.approval.decision) : state.proposal ? "Required" : "Not required"} tone={state.approval?.approved ? "success" : state.proposal ? "warning" : "neutral"} />
+        <StatusPill label="Target health" value={effectiveHealthStatus === "200" ? "Healthy" : effectiveHealthStatus === "—" ? "Not observed" : `HTTP ${effectiveHealthStatus}`} tone={effectiveHealthStatus === "200" ? "success" : "neutral"} />
+        <StatusPill label="Checkout" value={effectiveCheckoutStatus === "200" ? "Recovered" : checkoutFailed ? `HTTP ${effectiveCheckoutStatus}` : "Not observed"} tone={checkoutFailed ? "danger" : effectiveCheckoutStatus === "200" ? "success" : "neutral"} />
+        <StatusPill label="Evidence boundary" value={liveRun ? "Read-only observed" : state.phase === "idle" ? "Not checked" : "Read-only verified"} tone={liveRun || state.phase !== "idle" ? "success" : "neutral"} />
+        <StatusPill label="Approval" value={liveRun ? (liveRun.proposal.approval_recorded ? "Recorded" : "Required") : state.approval ? stringOf(state.approval.decision) : state.proposal ? "Required" : "Not required"} tone={state.approval?.approved ? "success" : liveRun && !liveRun.proposal.approval_recorded ? "warning" : state.proposal ? "warning" : "neutral"} />
       </section>
 
       <section className="content-grid">
@@ -396,16 +495,16 @@ export default function App() {
                   <div className="payment-field small"><span>Expiry</span><strong>12 / 30</strong></div>
                   <div className="payment-field small"><span>Security code</span><strong>•••</strong></div>
                 </div>
-                <button className="payment-button" disabled={busy || state.phase === "idle"} onClick={() => void runAction(() => postJson("/api/checkout/simulate"))}>
-                  {checkoutStatus === "200" ? "Run payment again" : "Simulate payment"} · {paymentAmount}
+                <button className="payment-button" disabled={busy || state.phase === "idle" || Boolean(liveRun)} onClick={() => void runAction(() => postJson("/api/checkout/simulate"))}>
+                  {effectiveCheckoutStatus === "200" ? "Run payment again" : "Simulate payment"} · {paymentAmount}
                 </button>
                 <div className="checkout-secure">⌁ Routed only to the local synthetic payment API</div>
               </div>
               <div className="payment-explanation">
                 <div className="section-kicker">BUSINESS SYMPTOM</div>
-                {checkoutFailed ? <div className="payment-alert failure"><div className="payment-alert-icon">!</div><div><strong>Payment could not be completed</strong><p>The checkout service timed out while contacting its simulated payment dependency.</p></div></div> : checkoutStatus === "200" ? <div className="payment-alert success"><div className="payment-alert-icon">✓</div><div><strong>Payment completed</strong><p>The latest synthetic checkout returned a successful response.</p></div></div> : <div className="payment-alert waiting"><div className="payment-alert-icon">…</div><div><strong>Payment surface is waiting</strong><p>Start local validation to exercise the customer-facing checkout flow.</p></div></div>}
-                {checkoutFailed ? <div className="payment-technical"><div><span>Customer-visible result</span><strong>Payment failed</strong></div><div><span>Technical status</span><strong>HTTP {checkoutStatus}</strong></div><div><span>Incident code</span><strong>{stringOf(checkout.error_code)}</strong></div><button className="link-button" onClick={() => setPaymentDetailsOpen(true)}>View technical error details ↗</button></div> : null}
-                {checkoutStatus === "200" ? <div className="payment-technical"><div><span>Customer-visible result</span><strong>Payment confirmed</strong></div><div><span>Technical status</span><strong>HTTP 200</strong></div><div><span>Evidence</span><strong>new checkout response</strong></div></div> : null}
+                {checkoutFailed ? <div className="payment-alert failure"><div className="payment-alert-icon">!</div><div><strong>Payment could not be completed</strong><p>The checkout service timed out while contacting its simulated payment dependency.</p></div></div> : effectiveCheckoutStatus === "200" ? <div className="payment-alert success"><div className="payment-alert-icon">✓</div><div><strong>Payment completed</strong><p>The latest synthetic checkout returned a successful response.</p></div></div> : <div className="payment-alert waiting"><div className="payment-alert-icon">…</div><div><strong>Payment surface is waiting</strong><p>Start local validation to exercise the customer-facing checkout flow.</p></div></div>}
+                {checkoutFailed ? <div className="payment-technical"><div><span>Customer-visible result</span><strong>Payment failed</strong></div><div><span>Technical status</span><strong>HTTP {effectiveCheckoutStatus}</strong></div><div><span>Incident code</span><strong>{stringOf(effectiveCheckout.error_code)}</strong></div><button className="link-button" onClick={() => setPaymentDetailsOpen(true)}>View technical error details ↗</button></div> : null}
+                {effectiveCheckoutStatus === "200" ? <div className="payment-technical"><div><span>Customer-visible result</span><strong>Payment confirmed</strong></div><div><span>Technical status</span><strong>HTTP 200</strong></div><div><span>Evidence</span><strong>new checkout response</strong></div></div> : null}
               </div>
             </div>
           </section>
@@ -413,10 +512,10 @@ export default function App() {
           <section className="panel overview-panel">
             <div className="panel-header"><div><div className="section-kicker">SERVICE OBSERVABILITY</div><h3>What the target is telling us</h3></div><span className="provenance-chip observed">observed</span></div>
             <div className="metric-cards">
-              <Metric label="Checkout status" value={checkoutStatus === "—" ? "—" : `HTTP ${checkoutStatus}`} detail={stringOf(checkout.error_code, "No error code")} />
-              <Metric label="Dependency latency" value={downstream.observed_latency_ms ? `${stringOf(downstream.observed_latency_ms)} ms` : "—"} detail="synthetic downstream" />
+              <Metric label="Checkout status" value={effectiveCheckoutStatus === "—" ? "—" : `HTTP ${effectiveCheckoutStatus}`} detail={stringOf(effectiveCheckout.error_code, "No error code")} />
+              <Metric label="Dependency latency" value={liveMetrics.downstream_latency_ms ? `${stringOf(liveMetrics.downstream_latency_ms)} ms` : downstream.observed_latency_ms ? `${stringOf(downstream.observed_latency_ms)} ms` : "—"} detail="synthetic downstream" />
               <Metric label="Timeout budget" value={timeline.timeout_budget_ms ? `${stringOf(timeline.timeout_budget_ms)} ms` : "—"} detail="runtime configuration" />
-              <Metric label="Error rate" value={timeoutRate === null ? "—" : `${timeoutRate}%`} detail={`${stringOf(metrics.checkout_timeouts, "—")} timed out`} />
+              <Metric label="Error rate" value={timeoutRate === null ? "—" : `${timeoutRate}%`} detail={`${stringOf(effectiveMetrics.checkout_timeouts, "—")} timed out`} />
             </div>
             <div className="fact-row">
               <span>Target <code>{target.base_url}</code></span>
@@ -492,7 +591,7 @@ export default function App() {
         <section className="details-modal" role="dialog" aria-modal="true" aria-labelledby="payment-error-title" onClick={(event) => event.stopPropagation()}>
           <div className="panel-header"><div><div className="section-kicker">TECHNICAL DETAIL</div><h3 id="payment-error-title">Payment failure evidence</h3></div><button className="close-button" aria-label="Close technical details" onClick={() => setPaymentDetailsOpen(false)}>×</button></div>
           <div className="modal-summary"><div className="modal-error-icon">!</div><div><strong>Customer payment failed</strong><p>The business symptom is backed by an observed response from the synthetic target.</p></div></div>
-          <div className="detail-grid"><div><span>HTTP status</span><strong>{checkoutStatus}</strong></div><div><span>Error code</span><strong>{stringOf(checkout.error_code)}</strong></div><div><span>Request ID</span><strong>{stringOf(checkout.request_id)}</strong></div><div><span>Dependency latency</span><strong>{stringOf(checkout.downstream_latency_ms)} ms</strong></div></div>
+          <div className="detail-grid"><div><span>HTTP status</span><strong>{effectiveCheckoutStatus}</strong></div><div><span>Error code</span><strong>{stringOf(effectiveCheckout.error_code)}</strong></div><div><span>Request ID</span><strong>{stringOf(effectiveCheckout.request_id)}</strong></div><div><span>Dependency latency</span><strong>{stringOf(effectiveCheckout.downstream_latency_ms)} ms</strong></div></div>
           <CodeBlock value={paymentDetail} />
           <div className="modal-footnote"><span className="provenance-chip observed">observed target response</span><span>This is the bridge from customer impact to SRE evidence. Logs, metrics, and timeline remain in the console.</span></div>
         </section>

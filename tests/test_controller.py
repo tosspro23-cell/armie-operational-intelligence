@@ -75,7 +75,7 @@ class ControllerTests(unittest.TestCase):
     def test_session_configuration_references_saved_agent_and_override(self) -> None:
         payload = session_payload("saved-agent-reference", "project-reference")
         self.assertEqual(payload["agent_id"], "saved-agent-reference")
-        self.assertEqual(payload["agent"]["model"], "gpt-5.6-luna")
+        self.assertEqual(payload["agent"]["model"], "gpt-6-luna")
         self.assertEqual(payload["environment"]["type"], "self_hosted")
         self.assertEqual(payload["environment"]["workspace_directory"], "/workspace")
         self.assertEqual(payload["metadata"]["openai_project_id"], "project-reference")
