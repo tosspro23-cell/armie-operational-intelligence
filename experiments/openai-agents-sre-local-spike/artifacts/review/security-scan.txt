@@ -8,13 +8,15 @@ only match is the intentional source test fixture, not a secret.
 Expanded Compose credential-value scan: PASS (no interpolated credential values
 included).
 Authorization headers, signed URLs, and full environment dumps were not included in review evidence.
-Public-readiness audit for the tracked tree and reachable branch history: PASS
-for the requested scan scope. No credential values, Authorization headers,
-signed URLs, real customer data, personal contact data, or host-specific paths
-were found. The only Authorization-shaped match is an intentional unit-test
-fixture. `.env.example` uses placeholders and runtime identifiers are read from
-the local environment. Repository visibility was not changed; public release
-still requires the user's separate visibility decision.
+Public-readiness audit result: CONDITIONAL. The current tracked tree and review
+evidence contain no credential values, Authorization header values, signed URLs,
+real customer data, or personal contact data. Reachable Git history also has no
+credential-shaped values. However, earlier README/SPIKE_REPORT commits contain
+host-specific local path examples, and the commit metadata contains a local
+machine author identity. These are not credentials, but they should be
+considered before public release. Repository visibility was not changed; no
+history rewrite was performed; public release still requires the user's
+separate visibility decision.
 
 Latest browser-run review evidence scan: PASS. The current review directory
 contains zero actual credential-shaped values, zero Authorization header values,
