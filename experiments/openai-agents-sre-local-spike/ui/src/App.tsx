@@ -392,7 +392,7 @@ export default function App() {
       <section className="notice-bar">
         <div>
           <strong>{liveRun ? "Live Agents API approval preview" : "Deterministic validation mode"}</strong>
-          <span>{liveRun ? "This read-only view is showing the real Session evidence before the human approval gate. It cannot approve or apply remediation." : "This console is exercising the local target and controller boundary. No Agent API session is connected."}</span>
+          <span>{liveRun ? liveRun.status === "approval_pending" ? "This view shows the real Session evidence and offers Approve or Deny for this pending synthetic remediation only." : "This view shows the real Session evidence. The approval decision is already recorded; no further mutation is available." : "This console is exercising the local target and controller boundary. No Agent API session is connected."}</span>
         </div>
         <span className={`provenance-chip ${liveRun ? "agent" : "controller"}`}>{liveRun ? "real session observed" : "controller-owned"}</span>
       </section>
