@@ -1,16 +1,22 @@
-python3 -m compileall -q controller target_service tests
+./.ui-venv/bin/python -m compileall -q controller target_service tests
 PASS
 
-python3 -m unittest discover -s tests -v
-Ran 21 tests in 0.004s
+./.ui-venv/bin/python -m unittest discover -s tests -v
+Ran 29 tests
 OK (skipped=1 opt-in Docker integration test)
 
-ARMIE_RUN_DOCKER_INTEGRATION=1 python3 -m unittest tests.test_docker_integration -v
-Ran 1 test in 4.706s
+ARMIE_RUN_DOCKER_INTEGRATION=1 ./.ui-venv/bin/python -m unittest tests.test_docker_integration -v
+Ran 1 test
 OK
 
 git diff --check
 PASS
+
+npm --prefix experiments/openai-agents-sre-local-spike/ui run build
+PASS (vite build)
+
+./.ui-venv/bin/python -m controller.cli resume --help
+PASS (resume command exposes explicit approve/deny decision)
 
 docker compose -f docker-compose.yml build sre_environment
 PASS; recorded codex-cli 0.156.0-alpha.9
@@ -29,8 +35,13 @@ fault reproducibility after target force-recreate: PASS
 approved remediation integration: PASS (explicit approval; target recreated with RESET_RUNTIME_CONFIG=0; checkout HTTP 200)
 
 Credential presence check (values not displayed):
-OPENAI_API_KEY=missing
-OPENAI_EXECUTOR_API_KEY=missing
+OPENAI_API_KEY=present
+OPENAI_EXECUTOR_API_KEY=present
 
-Controller real run credential boundary:
-not executed in this review-fix validation; no Agents API session was created.
+Controller real run:
+PASS; saved Agent Session created, self-hosted environment connected, four
+turns completed, same Session continued through approval and verification.
+
+Workbench approval guard:
+PASS; duplicate approval after completion returned HTTP 409 and did not run a
+second remediation.

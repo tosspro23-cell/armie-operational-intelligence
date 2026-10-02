@@ -26,9 +26,22 @@ cleanup() {
 }
 trap cleanup TERM INT EXIT
 
-"$venv_dir/bin/python" -m uvicorn controller.web_api:app \
-  --app-dir "$repo_root" \
-  --host 127.0.0.1 --port 8787 &
+if [[ -f "$repo_root/.env.local" ]]; then
+  (
+    set -a
+    # Local-only credentials are inherited by the controller subprocess only;
+    # the frontend process below is started outside this subshell.
+    source "$repo_root/.env.local"
+    set +a
+    exec "$venv_dir/bin/python" -m uvicorn controller.web_api:app \
+      --app-dir "$repo_root" \
+      --host 127.0.0.1 --port 8787
+  ) &
+else
+  "$venv_dir/bin/python" -m uvicorn controller.web_api:app \
+    --app-dir "$repo_root" \
+    --host 127.0.0.1 --port 8787 &
+fi
 backend_pid=$!
 
 npm --prefix "$ui_dir" run dev -- --host 127.0.0.1 --port 5173 &

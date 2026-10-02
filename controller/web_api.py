@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import queue
 import subprocess
+import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,6 +46,10 @@ from .remediation import apply_known_safe_remediation
 class ApprovalRequest(BaseModel):
     decision: Literal["approve", "deny"]
     proposal_id: str
+
+
+class LiveApprovalRequest(BaseModel):
+    decision: Literal["approve", "deny"]
 
 
 def utc_now() -> str:
@@ -98,6 +104,23 @@ def _event_type_counts(records: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _stable_identifier_label(value: Any) -> Any:
+    """Expose a stable UI label without returning a complete runtime ID."""
+
+    if not isinstance(value, str):
+        return value
+    prefix = value.split("_", 1)[0]
+    return f"{prefix}_…{value[-10:] if len(value) > 10 else '[redacted]'}"
+
+
+def _public_identity(identity: dict[str, Any]) -> dict[str, Any]:
+    public = dict(identity)
+    for key in ("agent_id", "agents_api_session_id", "agents_api_environment_id"):
+        if key in public:
+            public[key] = _stable_identifier_label(public[key])
+    return public
+
+
 def _turn_snapshot(run_dir: Path, label: str) -> dict[str, Any]:
     final_path = run_dir / f"{label}_final.md"
     events_path = run_dir / f"{label}_events.jsonl"
@@ -126,7 +149,7 @@ def live_run_snapshot() -> dict[str, Any]:
         return {"available": False, "message": "No real Agents API run artifacts are available."}
 
     identity = _read_json_file(run_dir / "runtime_identity.json")
-    identity = redact(identity) if isinstance(identity, dict) else {}
+    identity = _public_identity(redact(identity)) if isinstance(identity, dict) else {}
     controller_records = _read_jsonl(run_dir / "controller_events.jsonl")
     agent_records = _read_jsonl(run_dir / "agents_api_events.jsonl")
     controller_timeline = [
@@ -138,6 +161,10 @@ def live_run_snapshot() -> dict[str, Any]:
         if isinstance(record.get("kind"), str)
     ]
     kinds = [record.get("kind") for record in controller_records]
+    mutation_executed = any(
+        kind in {"remediation_config_restored", "remediation_restart"}
+        for kind in kinds
+    )
     proposal_path = run_dir / "remediation_proposal_final.md"
     proposal_text = ""
     if proposal_path.is_file():
@@ -181,13 +208,15 @@ def live_run_snapshot() -> dict[str, Any]:
             _turn_snapshot(run_dir, "initial_investigation"),
             _turn_snapshot(run_dir, "contradictory_evidence_reassessment"),
             _turn_snapshot(run_dir, "remediation_proposal"),
+            _turn_snapshot(run_dir, "post_remediation_verification"),
         ],
         "agent_event_type_counts": _event_type_counts(agent_records),
         "controller_timeline": controller_timeline[-80:],
         "proposal": {
             "text": proposal_text,
-            "mutation_executed": "remediation.applied" in kinds,
+            "mutation_executed": mutation_executed,
             "approval_recorded": "approval_decision" in kinds,
+            "verification_completed": (run_dir / "post_remediation_verification_final.md").is_file(),
         },
     }
 
@@ -492,6 +521,8 @@ class LocalConsole:
 
 
 console = LocalConsole()
+live_resume_lock = threading.RLock()
+live_resume_process: subprocess.Popen[bytes] | None = None
 app = FastAPI(title="ARMIE SRE Local Console", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
@@ -523,6 +554,49 @@ def get_state() -> dict[str, Any]:
 @app.get("/api/live-run")
 def get_live_run() -> dict[str, Any]:
     return live_run_snapshot()
+
+
+@app.post("/api/live-run/approval", status_code=202)
+def approve_live_run(request: LiveApprovalRequest) -> dict[str, Any]:
+    """Start the bounded same-session approval continuation from the Workbench."""
+
+    snapshot = live_run_snapshot()
+    if not snapshot.get("available") or snapshot.get("status") != "approval_pending":
+        raise HTTPException(status_code=409, detail="no live run is waiting for approval")
+    try:
+        config.require_openai_api_key()
+        config.require_executor_api_key()
+        config.require_runtime_identifiers()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="controller credential readiness is unavailable") from exc
+
+    run_id = snapshot.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        raise HTTPException(status_code=409, detail="live run identifier is unavailable")
+    with live_resume_lock:
+        global live_resume_process
+        if live_resume_process is not None and live_resume_process.poll() is None:
+            raise HTTPException(status_code=409, detail="live approval continuation is already running")
+        command = [
+            sys.executable,
+            "-m",
+            "controller.cli",
+            "resume",
+            "--run-id",
+            run_id,
+            "--keep-target",
+            "--approve-remediation" if request.decision == "approve" else "--deny-remediation",
+        ]
+        log_path = config.ARTIFACTS_ROOT / "runs" / run_id / "controller_resume.log"
+        with log_path.open("ab") as log_handle:
+            live_resume_process = subprocess.Popen(
+                command,
+                cwd=config.REPO_ROOT,
+                env=os.environ.copy(),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+            )
+    return {"status": "accepted", "run_id": run_id, "decision": request.decision}
 
 
 @app.get("/api/events")

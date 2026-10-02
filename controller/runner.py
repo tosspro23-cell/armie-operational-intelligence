@@ -147,13 +147,43 @@ class ExecutorProcess:
             self.log_handle.close()
 
 
+class AttachedExecutor:
+    """Observe an already-running self-hosted executor without restarting it."""
+
+    def __init__(self, container_id: str) -> None:
+        self.container_id = container_id
+
+    def ensure_alive(self) -> None:
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}", self.container_id],
+            cwd=config.REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0 or result.stdout.strip() != "running":
+            raise RuntimeError("attached self-hosted executor is not running")
+
+    def stop(self) -> None:
+        """The resumed controller must not stop an executor it did not create."""
+
+        return
+
+
 class SessionRunner:
-    def __init__(self, client: AgentApiClient, capture: EventCapture, session: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        client: AgentApiClient,
+        capture: EventCapture,
+        session: dict[str, Any],
+        executor: ExecutorProcess | AttachedExecutor | None = None,
+    ) -> None:
         self.client = client
         self.capture = capture
         self.session = session
         self.session_id = str(session["id"])
-        self.executor = ExecutorProcess(capture)
+        self.executor = executor or ExecutorProcess(capture)
 
     def start_executor(self) -> None:
         self.executor.start(self.session)

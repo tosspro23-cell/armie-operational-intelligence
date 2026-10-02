@@ -1,0 +1,1 @@
+{"turn":"post_remediation_verification","session_label":"sess_…5c9ded80fe","event_count":1679,"item_count":31,"outcome":"completed","event_types":{"turn.created":1,"turn.in_progress":1,"turn.item.added":31,"output_text.delta":1016,"reasoning_summary_text.delta":564,"turn.completed":1,"session.idle":1},"verification":"health_200_checkout_200_zero_timeouts_in_agent_sample"}

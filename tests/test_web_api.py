@@ -59,6 +59,9 @@ class WebConsoleContractTests(unittest.TestCase):
         self.assertTrue(snapshot["available"])
         self.assertEqual(snapshot["status"], "approval_pending")
         self.assertTrue(snapshot["session"]["connected"])
+        self.assertNotEqual(snapshot["session"]["session_id"], "sess_test")
+        self.assertEqual(snapshot["session"]["session_id"], "sess_…[redacted]")
+        self.assertEqual(snapshot["session"]["environment_id"], "env_…[redacted]")
         self.assertIn("agent.session.turn.completed", snapshot["agent_event_type_counts"])
         self.assertFalse(snapshot["proposal"]["mutation_executed"])
 

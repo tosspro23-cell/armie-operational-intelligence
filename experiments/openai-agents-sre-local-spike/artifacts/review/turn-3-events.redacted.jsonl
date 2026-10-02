@@ -1,0 +1,1 @@
+{"turn":"remediation_proposal","session_label":"sess_…5c9ded80fe","event_count":813,"item_count":5,"outcome":"completed","event_types":{"turn.created":1,"turn.in_progress":1,"turn.item.added":5,"output_text.delta":505,"reasoning_summary_text.delta":282,"turn.completed":1,"session.idle":1},"mutation_before_approval":false}

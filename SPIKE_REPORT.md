@@ -1,11 +1,12 @@
 # ARMIE Architecture Spike #001 — OpenAI Agents API local SRE runtime
 
-Status: Docker, the local synthetic incident, and the controlled approved
-remediation lifecycle are live-demonstrated. The real Agents API attempt on
-2026-09-30 reached the API with both credentials present but stopped at session
-creation: the saved agent is not persisted in the newly selected project. No
-real Agents API session, environment connection, or live agent result is
-claimed. The saved agent was not replaced.
+Status: Docker, the local synthetic incident, a real Agents API session, the
+self-hosted environment connection, multi-turn investigation, contradiction
+reassessment, explicit approval, controlled remediation, and same-session
+post-remediation verification are live-demonstrated. The live run used the
+saved Agent in the ARMIE Operational Intelligence project with model
+`gpt-6-luna`; no replacement Agent was created. Session and environment IDs
+are retained in ignored raw artifacts and redacted review evidence.
 
 This branch also adds a local-only Vite/React console over the existing FastAPI
 controller. It has been built and opened against a real Docker target; it shows
@@ -34,8 +35,10 @@ FastAPI controller :8787
         └─ explicit allowlisted approval gate
 ```
 
-The later live mode will add the Agents API event stream behind this same
-controller boundary.
+The live mode adds the Agents API event stream and same-session continuation
+behind this same controller boundary. The Workbench exposes the current
+proposal and an approval action only while the live run is actually waiting at
+the approval boundary.
 
 ```text
 controller (local Python)
@@ -83,19 +86,31 @@ included in the initial user message.
 
 ## 5. Agent Investigation Trace
 
-Not reached. The controller reached the session-creation request with
-presence-only credential readiness passing, but OpenAI returned HTTP 404:
-`No persisted agent found` for the configured saved-agent reference and stated
-that session-local agent IDs cannot be reused. No agent-generated tool call,
-shell action, or model output was fabricated. This is a project/agent-scope
-blocker, not evidence that a replacement agent should be created.
+The live run created one real Session and connected one self-hosted environment.
+The same Session was used for all four captured turns:
+
+| Turn | Captured event records | Retrieved Session Items | Outcome |
+| --- | ---: | ---: | --- |
+| initial investigation | 2,363 | 25 | completed |
+| contradictory-evidence reassessment | 694 | 29 | completed |
+| remediation proposal | 813 | 34 | completed |
+| post-remediation verification | 1,679 | 64 | completed |
+
+The controller captured environment connection events, streamed events,
+turn outcomes, tool and shell interaction records, retrieved items, and final
+assistant Session Items. The initial investigation and reassessment were
+read-only. The proposal turn stopped before any mutation; the later mutation
+was started only by the explicit approval continuation.
 
 ## 6. Hypotheses Generated
 
-The experiment presents two plausible explanations: a recent application or
-deployment regression, and downstream latency/pressure. Record the agent's
-actual hypotheses and confidence here after the live run; do not substitute
-controller expectations.
+The Agent considered two plausible explanations: a recent deployment or
+application configuration regression, and downstream latency or pressure.
+The evidence supported a direct timeout mechanism: dependency latency was 168
+ms while the active checkout budget was 120 ms. The initial deployment
+explanation remained plausible as a trigger or contributor, but the later
+timeline evidence showed that the tight budget predated the deployment and
+that a prior 118 ms response had succeeded.
 
 ## 7. Evidence Gathered
 
@@ -106,39 +121,55 @@ timeouts. Structured JSONL logs, deployment metadata, runtime configuration,
 and the runbook were read from the running container. The executor boundary
 check reached the target, read the evidence volume, and was denied write access
 by the read-only mount. A target force-recreate with the fault fixture produced
-the same timeout again.
+the same timeout again. After explicit approval, the target-only controlled
+restart restored the safe 300 ms timeout; the Agent then observed health 200,
+checkout 200, a ready checkout path, and fresh metrics with two attempts and
+zero timeouts in its verification sample. A later controller probe added one
+additional successful checkout to the raw probe artifact.
 
 ## 8. Hypothesis Revision Test
 
-The controller obtains a fresh read-only timeline diagnostic from the running
-target and sends it to the same session. The new observation contrasts
-successful checkout at 118 ms before the incident with 504 responses at 168 ms,
-while showing that the 120 ms budget predates the deployment. Record whether
-the agent revises its timeline, leading hypothesis, competing hypotheses,
-confidence, and next step after the live run.
+The controller obtained a fresh read-only timeline diagnostic and sent it to the
+same Session. The Agent recalibrated its explanation toward the latency crossing
+the existing timeout budget rather than treating the deployment as sufficient
+causal proof. It retained the deployment as a possible contributor, reported
+the remaining uncertainty, and requested the safest next step: inspect the
+current evidence and propose a bounded mitigation without making an unapproved
+change.
 
 ## 9. Human Approval Behavior
 
 The controller prints `Approve proposed remediation? [y/N]`. Empty input,
-`N`, and non-interactive execution are denied. No mutation is permitted before
-an explicit approval event. The deterministic test also confirms the
-remediation subprocess is not reached when approval is false.
+`N`, unexpected input, and non-interactive execution default to denied. The
+Workbench now shows Approve and Deny only when the real live run is waiting at
+`approval_pending`; those buttons resume the same Session through the bounded
+controller path. No mutation is permitted before an explicit approval event.
+The user explicitly approved this synthetic remediation in the continuation
+turn. A later duplicate Workbench approval request returned HTTP 409 because
+the run was already completed, so it could not execute a second mutation.
 
 ## 10. Remediation and Verification
 
-The approved remediation path is now covered by a real Docker integration test:
-the fault returns 504, the controlled remediation is explicitly approved, the
-target is recreated with `RESET_RUNTIME_CONFIG=0`, and checkout then returns
-200. This confirms the safe config is not overwritten on restart. The live
-Agents API run has not reached its approval gate, so no live human approval or
-same-session post-remediation verification is claimed yet.
+The user approved the live proposal explicitly. The controller executed only
+the allowlisted action: restore the known-safe synthetic configuration and
+recreate the target with `RESET_RUNTIME_CONFIG=0`; no Docker socket or
+arbitrary host command was exposed to the Agent. The same Session then ran a
+post-remediation verification turn and independently inspected health,
+checkout, metrics, runtime configuration, and logs. It observed HTTP 200
+checkout recovery and zero timeouts in its short sample. Remaining uncertainty
+is recorded: observed dependency latency was still 168 ms, above the 150 ms
+warning threshold; the verification sample was small; and the deployment ID
+retained in evidence differs from the active service version. No production
+system was changed.
 
 ## 11. Session Persistence Observations
 
-Not reached. The API did not return a session ID, so there is no session ID to
-compare. The runner binds every
-follow-up to the session ID returned by the one session creation response and
-records retrieved session items after each turn.
+The initial investigation, contradiction, proposal, approval continuation, and
+post-remediation verification all use the same Session ID and the same
+environment ID. The controller retrieved the Session again before continuing
+and refused to proceed if the returned ID differed. After the original CLI
+process ended, the resume path reattached the already-running executor instead
+of creating a new environment or Session.
 
 ## 12. Managed Harness Responsibilities
 
@@ -167,18 +198,19 @@ container cleanup was performed.
 
 ## 15. Event/Observability Quality
 
-The capture implementation now records redacted controller events, streamed
-Agents API events, per-turn event slices, retrieved session items, terminal
-turn outcome, approval, remediation, and verification records. Final turn
+The capture implementation records redacted controller events, streamed Agents
+API events, per-turn event slices, retrieved session items, terminal turn
+outcome, approval, remediation, and verification records. Final turn
 Markdown is extracted from the latest completed assistant Session Item rather
 than concatenated from streaming deltas. Text artifacts and JSONL events scrub
 credential assignments and signed URLs embedded in free-form text. The
 deterministic tests verified artifact persistence, field-aware redaction,
 credential separation, approval denial, saved-agent payload construction, and
 final-item extraction.
-No live Agents API JSONL stream was produced because credential readiness failed
-before session creation. Local controller and target evidence was captured in
-the ignored run directory and summarized in the tracked review evidence.
+The live raw JSONL stream and per-turn artifacts are under the ignored run
+directory `artifacts/runs/20261001T185830Z/`; sanitized summaries and redacted
+metadata are committed under the review directory. The UI presents observable
+event and final-output evidence, not private hidden chain-of-thought.
 
 The local console adds a separate SSE stream for sanitized controller lifecycle
 events. Browser-visible evidence is labelled as observed, controller-owned, or
@@ -202,18 +234,15 @@ extraction issue are corrected. The executor image records the installed
 `codex-cli 0.156.0-alpha.9` version in its runtime log; the Dockerfile still
 intentionally follows the alpha channel.
 
-Observed blockers on 2026-09-20 and 2026-09-30:
+Historical blockers and operational limitations:
 
 - `OPENAI_API_KEY` and `OPENAI_EXECUTOR_API_KEY` were both missing in the
   invoking environment. No session request was attempted.
-- On 2026-09-30 both credentials were present and the request reached the
-  Agents API, but the newly selected project could not resolve the saved agent
-  ID. The API returned HTTP 404 with `No persisted agent found` and instructed
-  that session-local agent IDs cannot be reused. No session or environment was
-  created. The smallest compliant next action is to create matching controller
-  and environment keys in the project that owns the saved agent, or otherwise
-  obtain an approved project-level access path; do not create a replacement
-  agent for this spike.
+- On 2026-09-30 both credentials were present and the newly selected project
+  could not resolve the previous saved-agent ID. The API returned HTTP 404 with
+  `No persisted agent found`. That historical attempt stopped safely before
+  session creation. The correct-project Agent was subsequently configured and
+  used for the live run; no replacement Agent was created in the experiment.
 - Docker Desktop 29.8.0 on `aarch64` initially left containers in `Created`,
   then passed the busybox smoke test after recovery. A stale network/project
   ownership conflict was resolved by using a unique experiment network.
@@ -223,11 +252,13 @@ Observed blockers on 2026-09-20 and 2026-09-30:
   the user worktree. The original worktree must be rechecked after local file
   access is restored.
 
-The approved-remediation Docker integration test passed on 2026-09-21: a
-fault checkout returned 504, the controller restored the checked-in safe
-configuration with explicit approval, recreated only the target with the reset
-flag disabled, and a subsequent checkout returned 200. No Agents API session
-was created during this validation.
+The approved-remediation Docker integration test passed on 2026-09-21. The
+real live run then passed the same boundary with explicit user approval and
+same-session Agent verification. During resume, Compose `ps -q` did not list
+the one-off executor container, so the controller safely stopped before
+mutation; the fallback label-based lookup was added and the subsequent resume
+succeeded. This is an operational limitation of the local one-off Compose
+lifecycle, not evidence of a second Session.
 
 ## 17. Files Changed
 
@@ -244,7 +275,7 @@ must be reconciled before relying on that worktree's branch state.
 ## 18. Exact Reproduction Commands
 
 ```bash
-cd /Users/ting/Documents/New\ project/armie-operational-intelligence
+cd /path/to/armie-operational-intelligence
 python3 -m unittest discover -s tests -v
 ARMIE_RUN_DOCKER_INTEGRATION=1 python3 -m unittest tests.test_docker_integration -v
 python3 -m compileall -q controller target_service tests
@@ -269,6 +300,9 @@ export OPENAI_EXECUTOR_API_KEY='...'
 export ARMIE_SRE_AGENT_ID='...'
 export OPENAI_PROJECT_ID='...'
 ARMIE_REUSE_LOCAL_IMAGES=1 python3 -m controller.cli run
+# Resume an existing approval-pending live run after an explicit human decision.
+.ui-venv/bin/python -m controller.cli resume --run-id 20261001T185830Z --approve-remediation --keep-target
+./scripts/start_sre_ui.sh
 ```
 
 The last command must be run by a human who understands the approval boundary,
@@ -278,12 +312,11 @@ the Codex conversation.
 
 ## 19. Architecture Observations
 
-Factual observation at this boundary: the code path, deterministic tests,
-Docker incident, controlled approved remediation, and fresh contradiction
-evidence are demonstrated. The browser console is also locally demonstrated,
-but the Agents API completion gate is not satisfied. The first credentialed
-attempt proved the configured project cannot resolve the saved agent; it did
-not create a session. A follow-up run must use credentials scoped to the
-project that owns that saved agent, then create a real session and capture the
-full same-session trace before this report can be marked complete. This spike
-does not decide the final ARMIE architecture or recommend production adoption.
+Factual observation at this boundary: the local target, self-hosted executor,
+real managed Agent session, multiple investigation turns, contradiction test,
+explicit approval, controlled target-only remediation, and same-session
+post-remediation verification are demonstrated. The Workbench now exposes the
+approval step for future approval-pending runs and shows the before/after
+evidence after completion. The result is limited to this isolated synthetic
+experiment and does not decide the final ARMIE architecture or recommend
+production adoption.

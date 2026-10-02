@@ -88,6 +88,7 @@ type LiveRun = {
     text: string;
     mutation_executed: boolean;
     approval_recorded: boolean;
+    verification_completed: boolean;
   };
 };
 
@@ -320,6 +321,7 @@ export default function App() {
       await action();
       await refreshState();
       await refreshEvidence();
+      await refreshLiveRun();
     } catch (error) {
       setBackendError(error instanceof Error ? error.message : "Controller request failed");
     } finally {
@@ -365,9 +367,9 @@ export default function App() {
     downstream_latency_ms: effectiveCheckout.downstream_latency_ms,
     simulated_order: "ui-demo-order",
   };
-  const liveStatus = liveRun?.status === "approval_pending" ? "Approval pending" : liveRun?.status === "running" ? "Run in progress" : "Live run observed";
+  const liveStatus = liveRun?.status === "approval_pending" ? "Approval pending" : liveRun?.status === "running" ? "Run in progress" : liveRun?.proposal.mutation_executed ? "Approved · verified" : "Live run observed";
   const liveEventTypes = Object.entries(liveRun?.agent_event_type_counts ?? {}).slice(-8);
-  const compactId = (value: string | null) => value ? `…${value.slice(-12)}` : "—";
+  const compactId = (value: string | null) => value ? value.includes("…") ? value : `…${value.slice(-12)}` : "—";
 
   return (
     <main className="app-shell">
@@ -437,7 +439,7 @@ export default function App() {
 
       {liveRun ? <section className="panel live-run-panel">
         <div className="panel-header"><div><div className="section-kicker">LIVE AGENTS API RUN</div><h3>Approval preview from the real Session</h3></div><span className="provenance-chip agent">read-only observer · {liveStatus}</span></div>
-        <p className="panel-description">The Workbench is reading the latest sanitized run artifacts. It shows observable final outputs and event metadata, not hidden chain-of-thought. The approval decision remains in the controller's explicit gate.</p>
+        <p className="panel-description">The Workbench is reading the latest sanitized run artifacts. It shows observable final outputs and event metadata, not hidden chain-of-thought. {liveRun.status === "approval_pending" ? "Approve or deny is available here only for this pending synthetic remediation." : "The approval decision is recorded in the controller's explicit gate."}</p>
         <div className="live-run-meta">
           <div><span>Session</span><code>{compactId(liveRun.session.session_id)}</code></div>
           <div><span>Environment</span><code>{compactId(liveRun.session.environment_id)}</code></div>
@@ -448,7 +450,7 @@ export default function App() {
           <div>
             <div className="subsection-label">Observable investigation turns</div>
             <div className="live-turn-list">
-              {liveRun.turns.map((turn) => <details className="live-turn" key={turn.label} open={turn.label === "remediation_proposal"}>
+              {liveRun.turns.map((turn) => <details className="live-turn" key={turn.label} open={turn.label === "remediation_proposal" || turn.label === "post_remediation_verification"}>
                 <summary><strong>{turn.label.split("_").join(" ")}</strong><span>{turn.status} · {turn.event_count} events</span></summary>
                 <CodeBlock value={turn.final || "No final output captured yet."} />
               </details>)}
@@ -466,7 +468,7 @@ export default function App() {
             <div className="event-chip-list">{liveEventTypes.map(([name, count]) => <span key={name}>{name} × {count}</span>)}</div>
           </div>
         </div>
-        <div className="live-proposal"><div className="subsection-label">Evidence-backed proposed remediation</div><CodeBlock value={liveRun.proposal.text || "Proposal not captured yet."} /><p className="live-approval-note">No mutation has occurred. Review this proposal, its risks, verification, and rollback in this panel before responding to the approval prompt.</p></div>
+        <div className="live-proposal"><div className="subsection-label">Evidence-backed proposed remediation</div><CodeBlock value={liveRun.proposal.text || "Proposal not captured yet."} /><p className="live-approval-note">{liveRun.proposal.mutation_executed ? "The approved allowlisted action was executed. Review the post-remediation verification turn above; the original proposal text is preserved as historical evidence." : "No mutation has occurred. Review this proposal, its risks, verification, and rollback in this panel before responding to the approval prompt."}</p>{liveRun.status === "approval_pending" && !liveRun.proposal.approval_recorded ? <><div className="approval-actions"><button className="danger-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/live-run/approval", { decision: "deny" }))}>Deny live remediation</button><button className="approve-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/live-run/approval", { decision: "approve" }))}>Approve live remediation</button></div><small className="approval-default">This decision resumes the same Session through the bounded controller path. No arbitrary command or production target is exposed.</small></> : null}</div>
       </section> : null}
 
       <section className="metric-grid">
@@ -567,7 +569,7 @@ export default function App() {
 
           <section className={`panel approval-panel ${state.proposal ? "attention" : ""}`}>
             <div className="panel-header"><div><div className="section-kicker">CONTROLLED CHANGE</div><h3>Approval boundary</h3></div><span className="provenance-chip controller">controller</span></div>
-            {!state.proposal ? <div className="empty-state">The proposal will appear only after the deterministic incident has been reproduced.</div> : <>
+            {liveRun ? <div className={`decision-box ${liveRun.proposal.mutation_executed ? "approved" : "denied"}`}><strong>{liveRun.proposal.mutation_executed ? "Live remediation approved and executed" : "Live approval pending"}</strong><span>{liveRun.proposal.mutation_executed ? "The target was changed only through the allowlisted controller action. See the live verification turn for new evidence." : "The live Session proposal is shown above. Local deterministic controls are disabled while it is active."}</span></div> : !state.proposal ? <div className="empty-state">The proposal will appear only after the deterministic incident has been reproduced.</div> : <>
               <div className="proposal-tag">PROPOSAL · {state.proposal.source}</div>
               <h4>{state.proposal.title}</h4>
               <p className="proposal-scope">Scope: {state.proposal.scope}</p>
@@ -581,7 +583,7 @@ export default function App() {
 
           <section className="panel verification-panel">
             <div className="panel-header"><div><div className="section-kicker">RECOVERY</div><h3>Before / after</h3></div><span className="provenance-chip observed">new evidence</span></div>
-            <div className="comparison"><div><span>Before</span><strong>{checkoutStatus === "—" ? "—" : `HTTP ${checkoutStatus}`}</strong><small>{stringOf(checkout.error_code, "Awaiting fault probe")}</small></div><div className="comparison-arrow">→</div><div><span>After</span><strong>{verification ? `HTTP ${statusOf(verification.checkout)}` : "—"}</strong><small>{verification?.verified ? "verified by new checkout" : "awaiting approved remediation"}</small></div></div>
+            <div className="comparison"><div><span>Before</span><strong>{liveRun && liveRun.target.checkout_statuses.length ? `HTTP ${String(liveRun.target.checkout_statuses[0])}` : checkoutStatus === "—" ? "—" : `HTTP ${checkoutStatus}`}</strong><small>{liveRun ? "observed incident response" : stringOf(checkout.error_code, "Awaiting fault probe")}</small></div><div className="comparison-arrow">→</div><div><span>After</span><strong>{liveRun?.proposal.mutation_executed && liveRun.target.checkout_statuses.length ? `HTTP ${String(liveRun.target.checkout_statuses[liveRun.target.checkout_statuses.length - 1])}` : verification ? `HTTP ${statusOf(verification.checkout)}` : "—"}</strong><small>{liveRun?.proposal.mutation_executed ? "verified by same-session Agent" : verification?.verified ? "verified by new checkout" : "awaiting approved remediation"}</small></div></div>
             {state.error ? <div className="error-inline">{state.error}</div> : null}
           </section>
         </aside>

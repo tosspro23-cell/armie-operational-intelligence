@@ -47,7 +47,7 @@ unit-test or local-service run.
 ## Run the deterministic checks
 
 ```bash
-cd /Users/ting/Documents/New\ project/armie-operational-intelligence
+cd /path/to/armie-operational-intelligence
 python3 -m unittest discover -s tests -v
 ```
 

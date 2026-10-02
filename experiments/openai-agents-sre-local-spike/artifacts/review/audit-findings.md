@@ -24,16 +24,20 @@ Corrected from the independent review in this validation attempt:
 - the executor workspace uses the Compose service name `target`;
 - the executor records the installed Codex CLI version.
 
-Not demonstrated because credential readiness failed before session creation:
+Demonstrated in live run `20261001T185830Z`:
 
-- real Agents API session creation;
-- self-hosted environment connection;
-- real agent shell/tool investigation;
+- real Agents API session creation from the saved correct-project Agent;
+- self-hosted environment connection using the returned environment identity;
+- real Agent shell/tool investigation against mounted local evidence;
 - same-session contradictory-evidence reassessment;
-- remediation recommendation and post-remediation verification.
+- evidence-backed remediation recommendation;
+- explicit approval, controlled target-only remediation, and same-session
+  post-remediation verification.
 
 Demonstrated after the Docker retry:
 
 - target health and real HTTP checkout fault;
 - structured evidence and deterministic fault reproducibility;
 - executor target reachability, evidence read, and read-only write rejection.
+- Workbench approval actions are now exposed only for a live run in
+  `approval_pending`; completed runs reject duplicate approval requests.

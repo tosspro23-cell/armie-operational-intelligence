@@ -1,6 +1,10 @@
 {
-  "status": "not_reached",
-  "approved": false,
+  "status": "approved",
+  "approved": true,
+  "decision_source": "explicit_user_approval_in_continuation_turn",
+  "session_id_label": "sess_…5c9ded80fe",
   "mutation_before_approval": false,
-  "reason": "No recommendation was produced because credential readiness failed before session creation"
+  "approval_gate": "controller_and_workbench_bounded_resume",
+  "duplicate_approval_after_completion": "rejected_http_409",
+  "recorded_at": "2026-10-02T18:04:24.203291+00:00"
 }

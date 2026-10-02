@@ -1,13 +1,15 @@
 # Live Run Summary
 
-Status: independent-review implementation fixes passed deterministic checks and
-local Docker validation, including approved-remediation recovery. A credentialed
-Agents API attempt was made on 2026-09-30 and stopped at session creation
-because the configured project cannot resolve the saved agent. No session was
-created and no live agent result is claimed.
+Status: the real Agents API architecture spike completed for the isolated
+synthetic service. The run created one Session from the saved correct-project
+Agent, connected one self-hosted executor, completed four turns, reached the
+human approval boundary, executed the allowlisted target-only remediation after
+explicit approval, and verified recovery in the same Session. No production
+system was changed.
 
 Reviewed branch base: `develop` at `80c4c43`.
-Validation branch: `spike/openai-agents-sre-live-validation`.
+Validation branch: `spike/openai-agents-sre-local-ui`.
+Live run: `20261001T185830Z`.
 
 ## Observable results
 
@@ -29,21 +31,27 @@ Validation branch: `spike/openai-agents-sre-live-validation`.
   post-restart checkout 200.
 - The executor image reported `codex-cli 0.156.0-alpha.9`; the workspace guide
   uses the actual Compose service name `target`.
-- The initial presence-only credential check reported both keys missing and
-  stopped before a request.
-- After both keys were configured locally, the controller sent a real session
-  creation request. OpenAI returned HTTP 404 `No persisted agent found` for the
-  configured saved-agent reference and stated that session-local agent IDs
-  cannot be reused. The partial ignored run is under
-  `artifacts/runs/20260930T084958Z/`.
-- No session ID, environment ID, environment connection, turn, model output,
-  tool result, approval recommendation, remediation, or verification was
-  produced. The target was stopped by the controller cleanup path.
-- No Agents API session, session ID, environment connection, turn, model output, tool result, approval recommendation, remediation, or verification was fabricated.
+- The real Session used saved Agent `SRE agent for incident response` with
+  model `gpt-6-luna`; stable redacted labels are `sess_…5c9ded80fe` and
+  `ccarenv_…NDg3MTc1YQ`.
+- The same Session completed initial investigation, contradiction reassessment,
+  remediation proposal, and post-remediation verification. Per-turn event
+  counts were 2363, 694, 813, and 1679; retrieved item counts were 25, 29, 34,
+  and 64.
+- After explicit approval, the safe 300 ms configuration was restored and the
+  Agent observed HTTP 200 checkout, health 200, and zero timeouts in its fresh
+  verification sample.
+- The user approval is recorded in the run artifact. A later duplicate approval
+  request was rejected with HTTP 409 because the run was already complete.
+- The earlier 2026-09-30 saved-agent/project mismatch remains preserved as a
+  historical ignored run; it is not the result of this completed run.
 
 ## Completion gate
 
-Not satisfied. The next safe action is to use matching controller and
-environment keys in the project that owns the saved agent, then rerun the
-controller. Do not paste either credential into chat. The current branch must
-not create a replacement SRE agent for this spike.
+Demonstrated for the isolated experiment: local target execution, deterministic
+fault, real saved-Agent Session, self-hosted environment connection, real
+read-only evidence inspection, multiple turns, contradiction reassessment,
+explicit approval before mutation, allowlisted remediation, and independent
+same-session verification. Remaining limitations are the short post-change
+sample, the still-elevated synthetic downstream latency, and the known
+deployment/version metadata ambiguity recorded by the Agent.

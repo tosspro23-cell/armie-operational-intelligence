@@ -1,0 +1,1 @@
+{"turn":"initial_investigation","session_label":"sess_…5c9ded80fe","event_count":2363,"item_count":25,"outcome":"completed","event_types":{"environment.connected":1,"turn.created":1,"turn.in_progress":1,"turn.item.added":25,"command_execution_output.delta":4,"output_text.delta":1184,"reasoning_summary_text.delta":1078,"turn.completed":1,"session.idle":1}}

@@ -23,7 +23,7 @@ from .probe import (
     write_probe_artifact,
 )
 from .remediation import ApprovalRequired, apply_known_safe_remediation, approval_from_text
-from .runner import SessionRunner
+from .runner import AttachedExecutor, SessionRunner
 
 
 def new_run() -> tuple[Path, EventCapture]:
@@ -336,6 +336,169 @@ def run_real(approve_remediation: bool, keep_target: bool) -> int:
             compose_stop()
 
 
+def _running_executor_id() -> str:
+    result = subprocess.run(
+        ["docker", "compose", "-f", str(config.COMPOSE_FILE), "ps", "-q", "sre_environment"],
+        cwd=config.REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    container_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+    if not container_id:
+        # `docker compose run` creates a one-off container that is visible to
+        # Docker's label filter but is intentionally omitted by `compose ps -q`.
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                "label=com.docker.compose.service=sre_environment",
+                "--filter",
+                "status=running",
+                "--format",
+                "{{.ID}}",
+            ],
+            cwd=config.REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        container_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+    if result.returncode != 0 or not container_id:
+        raise RuntimeError("no running self-hosted executor is available for session resume")
+    return container_id
+
+
+def _stored_probes(run_dir: Path) -> list[dict[str, Any]]:
+    path = run_dir / "target_probe.jsonl"
+    if not path.is_file():
+        return []
+    probes: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            probes.append(value)
+    return probes
+
+
+def run_resume(
+    run_id: str,
+    approve_remediation: bool,
+    keep_target: bool,
+    deny_remediation: bool = False,
+) -> int:
+    """Resume only the approval and verification stages of an existing run."""
+
+    run_dir = config.ARTIFACTS_ROOT / "runs" / run_id
+    session_path = run_dir / "session.json"
+    proposal_path = run_dir / "remediation_proposal_final.md"
+    approval_path = run_dir / "approval_record.json"
+    if not session_path.is_file() or not proposal_path.is_file():
+        raise RuntimeError("resume requires an existing run with a captured proposal")
+    if approval_path.exists():
+        raise RuntimeError("approval has already been recorded for this run")
+    if approve_remediation and deny_remediation:
+        raise RuntimeError("resume approval decision cannot be both approve and deny")
+
+    session = json.loads(session_path.read_text(encoding="utf-8"))
+    session_id = str(session.get("id", ""))
+    environment = session.get("environment") or {}
+    environment_id = environment.get("id") if isinstance(environment, dict) else None
+    agent = session.get("agent") or {}
+    if not session_id or not isinstance(environment_id, str) or not environment_id:
+        raise RuntimeError("stored session does not contain a resumable environment")
+
+    capture = EventCapture(run_dir)
+    runner: SessionRunner | None = None
+    try:
+        config.require_openai_api_key()
+        config.require_executor_api_key()
+        _, project_id = config.require_runtime_identifiers()
+        client = AgentApiClient(config.require_openai_api_key(), capture, project_id)
+        current = client.retrieve_session(session_id)
+        current_id = str(current.get("id", ""))
+        if current_id != session_id:
+            raise RuntimeError("retrieved session ID does not match the stored run")
+        capture.controller(
+            "session_reconnected",
+            {
+                "session_id": session_id,
+                "environment_id": environment_id,
+                "session_status": current.get("status"),
+                "agent_id": agent.get("id"),
+            },
+        )
+        capture.write_json(
+            "resume_runtime_identity.json",
+            runtime_identity(session_id, agent.get("id"), environment_id),
+        )
+        executor_id = _running_executor_id()
+        attached = AttachedExecutor(executor_id)
+        attached.ensure_alive()
+        capture.controller(
+            "executor_reconnected",
+            {"container_id": executor_id, "environment_id": environment_id},
+        )
+        runner = SessionRunner(client, capture, session, executor=attached)
+
+        approved = approve_remediation
+        if deny_remediation:
+            approved = False
+        elif not approve_remediation:
+            if sys.stdin.isatty():
+                approved = approval_from_text(input("Approve proposed remediation? [y/N] "))
+            else:
+                print("Approve proposed remediation? [y/N] (non-interactive default: N)")
+        capture.controller(
+            "approval_decision",
+            {"approved": approved, "source": "explicit_flag_or_human_prompt"},
+        )
+        capture.write_json(
+            "approval_record.json",
+            {
+                "approved": approved,
+                "source": "explicit_flag_or_human_prompt",
+                "session_id": session_id,
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        if not approved:
+            try:
+                apply_known_safe_remediation(capture, approved=False)
+            except ApprovalRequired as exc:
+                capture.controller("remediation_blocked", {"reason": str(exc)})
+            print(f"run resumed and denied at approval boundary: {run_dir}")
+            return 0
+
+        apply_known_safe_remediation(capture, approved=True)
+        health = wait_for_health()
+        capture.controller("target_started", health)
+        recovery_probes = probe_incident(capture, count=1)
+        write_probe_artifact(run_dir, _stored_probes(run_dir) + recovery_probes)
+        snapshot_runtime(run_dir)
+        turn = runner.run_turn(
+            "post_remediation_verification",
+            "The approved bounded remediation has now been applied by the controller. "
+            "Inspect the actual health, checkout response, metrics, and new logs. "
+            "Verify recovery independently, report remaining uncertainty, and do not "
+            "assume success from the controller's statement.",
+        )
+        write_turn_artifacts(run_dir, capture, "post_remediation_verification", turn)
+        print(f"run resumed with verification: {run_dir}")
+        return 0
+    finally:
+        if runner is not None:
+            runner.stop()
+        if not keep_target:
+            compose_stop()
+
+
 def run_probe() -> int:
     prepare_runtime()
     compose_up()
@@ -360,12 +523,25 @@ def main(argv: list[str] | None = None) -> int:
     run_parser = subparsers.add_parser("run")
     run_parser.add_argument("--approve-remediation", action="store_true")
     run_parser.add_argument("--keep-target", action="store_true")
+    resume_parser = subparsers.add_parser("resume")
+    resume_parser.add_argument("--run-id", required=True)
+    decision = resume_parser.add_mutually_exclusive_group()
+    decision.add_argument("--approve-remediation", action="store_true")
+    decision.add_argument("--deny-remediation", action="store_true")
+    resume_parser.add_argument("--keep-target", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "prepare":
         prepare_runtime()
         return 0
     if args.command == "probe":
         return run_probe()
+    if args.command == "resume":
+        return run_resume(
+            args.run_id,
+            args.approve_remediation,
+            args.keep_target,
+            args.deny_remediation,
+        )
     return run_real(args.approve_remediation, args.keep_target)
 
 
