@@ -45,7 +45,26 @@ class WebConsoleContractTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (run_dir / "target_probe.jsonl").write_text(
-                json.dumps({"label": "checkout_1", "status": 504}), encoding="utf-8"
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "label": "health",
+                                "status": 200,
+                                "body": {"version": "target-v1", "checkout_path": "degraded"},
+                            }
+                        ),
+                        json.dumps({"label": "checkout_1", "status": 504}),
+                        json.dumps(
+                            {
+                                "label": "health",
+                                "status": 200,
+                                "body": {"version": "target-v2", "checkout_path": "ready"},
+                            }
+                        ),
+                    ]
+                ),
+                encoding="utf-8",
             )
             (run_dir / "remediation_proposal_final.md").write_text(
                 "No API key here.\n", encoding="utf-8"
@@ -59,6 +78,7 @@ class WebConsoleContractTests(unittest.TestCase):
         self.assertTrue(snapshot["available"])
         self.assertEqual(snapshot["status"], "approval_pending")
         self.assertTrue(snapshot["session"]["connected"])
+        self.assertEqual(snapshot["target"]["health"]["body"]["version"], "target-v2")
         self.assertNotEqual(snapshot["session"]["session_id"], "sess_test")
         self.assertEqual(snapshot["session"]["session_id"], "sess_…[redacted]")
         self.assertEqual(snapshot["session"]["environment_id"], "env_…[redacted]")

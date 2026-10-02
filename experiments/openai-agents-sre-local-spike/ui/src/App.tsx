@@ -339,6 +339,7 @@ export default function App() {
   const checkoutStatus = statusOf(checkoutResponse);
   const liveCheckout = liveRun?.target.latest_checkout ?? null;
   const liveHealth = liveRun?.target.health ?? null;
+  const liveHealthBody = responseBody(liveHealth);
   const liveMetrics = responseBody(liveRun?.target.metrics ?? null);
   const liveCheckoutStatus = liveCheckout ? stringOf(liveCheckout.status) : "—";
   const effectiveCheckoutResponse = liveCheckout ?? checkoutResponse;
@@ -370,6 +371,7 @@ export default function App() {
   const liveStatus = liveRun?.status === "approval_pending" ? "Approval pending" : liveRun?.status === "running" ? "Run in progress" : liveRun?.proposal.mutation_executed ? "Approved · verified" : "Live run observed";
   const liveEventTypes = Object.entries(liveRun?.agent_event_type_counts ?? {}).slice(-8);
   const compactId = (value: string | null) => value ? value.includes("…") ? value : `…${value.slice(-12)}` : "—";
+  const observedServiceVersion = liveRun ? stringOf(liveHealthBody.version, stringOf(identity.target_service_version)) : stringOf(identity.target_service_version);
 
   return (
     <main className="app-shell">
@@ -521,7 +523,7 @@ export default function App() {
             </div>
             <div className="fact-row">
               <span>Target <code>{target.base_url}</code></span>
-              <span>Service <code>{stringOf(identity.target_service_version)}</code></span>
+              <span>Service <code>{observedServiceVersion}</code></span>
               <span>Deployment <code>{stringOf(identity.deployment_version)}</code></span>
             </div>
           </section>

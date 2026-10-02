@@ -191,7 +191,10 @@ def live_run_snapshot() -> dict[str, Any]:
         "status": status,
         "identity": identity,
         "target": {
-            "health": next((record for record in probes if record.get("label") == "health"), None),
+            "health": next(
+                (record for record in reversed(probes) if record.get("label") == "health"),
+                None,
+            ),
             "metrics": next((record for record in reversed(probes) if str(record.get("label", "")).startswith("metrics")), None),
             "checkout_samples": len(checkout_probes),
             "checkout_statuses": [record.get("status") for record in checkout_probes],
