@@ -8,10 +8,79 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from controller.web_api import ApprovalRequest, LocalConsole, live_run_snapshot
+from controller.events import EventCapture
+from controller.web_api import ApprovalRequest, LocalConsole, live_run_snapshot, start_live_run
 
 
 class WebConsoleContractTests(unittest.TestCase):
+    @patch("controller.web_api.request_json")
+    @patch("controller.web_api.wait_for_health", return_value={"status": 200, "body": {"status": "ok"}})
+    @patch("controller.web_api.compose_up")
+    @patch("controller.web_api.prepare_runtime")
+    def test_reset_fault_leaves_target_ready_for_agents_api_start(
+        self,
+        prepare_runtime,
+        compose_up,
+        wait_for_health,
+        request_json,
+    ) -> None:
+        request_json.side_effect = [
+            {"status": 200, "body": {"checkout_timeouts": 0}},
+            {"status": 200, "body": {"status": "ok", "observed_latency_ms": 168}},
+            {"status": 200, "body": {"timeout_budget_ms": 120}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / "reset-run"
+            run_dir.mkdir(parents=True)
+            capture = EventCapture(run_dir)
+            console = LocalConsole()
+            with patch("controller.web_api.new_run", return_value=(run_dir, capture)):
+                console.reset_local()
+                self.assertIsNotNone(console.worker)
+                console.worker.join(timeout=1)  # type: ignore[union-attr]
+
+        snapshot = console.snapshot()
+        self.assertEqual(snapshot["phase"], "fault_ready")
+        self.assertEqual(snapshot["target"]["health"]["status"], 200)
+        self.assertIsNone(snapshot["target"]["last_checkout"])
+        prepare_runtime.assert_called_once()
+        compose_up.assert_called_once_with(force_recreate=True)
+        wait_for_health.assert_called_once()
+
+    def test_browser_live_start_requires_credentials_and_launches_one_run(self) -> None:
+        import os
+        from unittest.mock import Mock
+
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / "artifacts" / "runs" / "browser-run"
+            with patch.dict(
+                os.environ,
+                {
+                    "OPENAI_API_KEY": "controller-key",
+                    "OPENAI_EXECUTOR_API_KEY": "executor-key",
+                    "ARMIE_SRE_AGENT_ID": "saved-agent",
+                    "OPENAI_PROJECT_ID": "project",
+                },
+                clear=False,
+            ), patch(
+                "controller.web_api.new_run",
+                return_value=(run_dir, Mock()),
+            ), patch(
+                "controller.web_api.run_real",
+                return_value=0,
+            ) as run_real:
+                result = start_live_run()
+                self.assertEqual(result["status"], "accepted")
+                self.assertEqual(result["run_id"], "browser-run")
+
+                from controller.web_api import live_run_thread
+
+                self.assertIsNotNone(live_run_thread)
+                live_run_thread.join(timeout=1)  # type: ignore[union-attr]
+                run_real.assert_called_once()
+                self.assertEqual(run_real.call_args.kwargs["prepared_run"], run_dir)
+                self.assertIsNotNone(run_real.call_args.kwargs["approval_provider"])
+
     def test_live_run_snapshot_is_read_only_and_redacted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             run_dir = Path(directory) / "artifacts" / "runs" / "20261002T000000Z"

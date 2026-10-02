@@ -23,6 +23,7 @@ experiments/openai-agents-sre-local-spike/artifacts/review/audit-findings.md
 experiments/openai-agents-sre-local-spike/artifacts/review/docker-diagnostics.md
 experiments/openai-agents-sre-local-spike/artifacts/review/evidence-manifest.sha256
 experiments/openai-agents-sre-local-spike/artifacts/review/live-attempt-20260930.json
+experiments/openai-agents-sre-local-spike/artifacts/review/live-attempt-20261002.json
 experiments/openai-agents-sre-local-spike/artifacts/review/local-service-validation.md
 experiments/openai-agents-sre-local-spike/artifacts/review/payload-audit.txt
 experiments/openai-agents-sre-local-spike/artifacts/review/remediation-record.json

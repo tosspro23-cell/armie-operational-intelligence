@@ -10,6 +10,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from . import config
@@ -205,8 +206,25 @@ def validate_executor_boundary(capture: EventCapture) -> None:
         raise RuntimeError("isolated executor boundary validation failed")
 
 
-def run_real(approve_remediation: bool, keep_target: bool) -> int:
-    run_dir, capture = new_run()
+def run_real(
+    approve_remediation: bool,
+    keep_target: bool,
+    approval_provider: Callable[[Path], bool] | None = None,
+    prepared_run: Path | None = None,
+) -> int:
+    """Run the real acceptance flow.
+
+    ``approval_provider`` is used by the browser controller. It pauses after
+    the Agent has produced a proposal and resumes only after the Controller
+    receives an explicit human decision. The default CLI path remains the
+    interactive terminal prompt.
+    """
+
+    if prepared_run is None:
+        run_dir, _ = new_run()
+    else:
+        run_dir = prepared_run
+    capture = EventCapture(run_dir)
     capture.controller("run_started", {"run_dir": str(run_dir.relative_to(config.REPO_ROOT))})
     runner: SessionRunner | None = None
     try:
@@ -287,19 +305,27 @@ def run_real(approve_remediation: bool, keep_target: bool) -> int:
         write_turn_artifacts(run_dir, capture, "remediation_proposal", turn)
 
         approved = approve_remediation
+        approval_source = "explicit_flag_or_human_prompt"
         if not approve_remediation:
-            if sys.stdin.isatty():
+            if approval_provider is not None:
+                capture.controller(
+                    "approval_pending",
+                    {"source": "workbench", "default": "deny"},
+                )
+                approved = approval_provider(run_dir)
+                approval_source = "workbench"
+            elif sys.stdin.isatty():
                 approved = approval_from_text(input("Approve proposed remediation? [y/N] "))
             else:
                 print("Approve proposed remediation? [y/N] (non-interactive default: N)")
                 approved = False
         capture.controller(
             "approval_decision",
-            {"approved": approved, "source": "explicit_flag_or_human_prompt"},
+            {"approved": approved, "source": approval_source},
         )
         capture.write_json(
             "approval_record.json",
-            {"approved": approved, "source": "explicit_flag_or_human_prompt"},
+            {"approved": approved, "source": approval_source},
         )
         if not approved:
             try:

@@ -198,14 +198,25 @@ class SessionRunner:
             ),
         )
 
-    def _next_event(self, monitor: StreamMonitor, timeout: float) -> Any:
+    def _next_event(self, monitor: StreamMonitor, timeout: float) -> Any | None:
+        """Return one event, or None while the open stream is temporarily quiet.
+
+        Agents API turns are asynchronous. A turn can remain queued or in
+        progress for longer than one queue poll interval without indicating a
+        failure. The overall waiters own the deadline; an empty short poll
+        must not stop the stream or executor.
+        """
+
         try:
             _, payload = monitor.events.get(timeout=timeout)
             return payload
-        except queue.Empty as exc:
-            monitor.stop()
+        except queue.Empty:
+            if monitor.error is not None:
+                monitor.stop()
+                self.executor.ensure_alive()
+                raise RuntimeError(f"Agents API event stream failed: {monitor.error}") from monitor.error
             self.executor.ensure_alive()
-            raise TimeoutError("timed out waiting for Agents API event") from exc
+            return None
 
     def _wait_connected(self, monitor: StreamMonitor, timeout: float = 180.0) -> None:
         if not monitor.opened.wait(timeout=30):
@@ -213,6 +224,8 @@ class SessionRunner:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             payload = self._next_event(monitor, min(5.0, deadline - time.monotonic()))
+            if payload is None:
+                continue
             kind = event_type(payload)
             if kind == "agent.session.environment.connected":
                 self.capture.controller("environment_connected", {})
@@ -231,6 +244,8 @@ class SessionRunner:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             payload = self._next_event(monitor, min(10.0, deadline - time.monotonic()))
+            if payload is None:
+                continue
             kind = event_type(payload)
             if kind == "agent.session.turn.completed":
                 self.capture.controller(

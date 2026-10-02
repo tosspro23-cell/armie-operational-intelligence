@@ -12,8 +12,20 @@ This branch also adds a local-only Vite/React console over the existing FastAPI
 controller. It has been built and opened against a real Docker target; it shows
 the customer-facing payment failure, fault evidence, controller SSE events, and
 approval boundary. Its fixed `ui-demo-order` request returned a real synthetic
-HTTP 504 and emitted a `payment.checkout.simulated` controller event. It does
-not create or simulate an Agent API session.
+HTTP 504 and emitted a `payment.checkout.simulated` controller event. The
+Workbench now also provides a bounded browser start action for a real Agents
+API Session. The browser-triggered path was exercised end to end in run
+`20261002T200149Z`, including Session creation, environment connection,
+contradiction reassessment, explicit approval, controlled remediation, and
+same-Session recovery verification.
+The Workbench control surface is grouped into an Incident Workspace for the
+synthetic payment service and a purple Agents API Control Room for Session
+start, observable turns, approval, event stream, and same-session recovery.
+Reset fault is now a separate preparation action: it recreates the deterministic
+fault and leaves the local target in `fault_ready`, making a new Agents API run
+available without another terminal command. Local actions hide any historical
+live-run view so old recovery evidence cannot be mistaken for the current
+faulted target.
 
 ## 1. Experiment Objective
 
@@ -36,9 +48,10 @@ FastAPI controller :8787
 ```
 
 The live mode adds the Agents API event stream and same-session continuation
-behind this same controller boundary. The Workbench exposes the current
-proposal and an approval action only while the live run is actually waiting at
-the approval boundary.
+behind this same controller boundary. The purple Agents API Control Room
+exposes the current proposal and approval action only while the live run is
+actually waiting at the approval boundary, then keeps the recovery check and
+observable controller stream in the same visual boundary.
 
 ```text
 controller (local Python)
@@ -86,15 +99,16 @@ included in the initial user message.
 
 ## 5. Agent Investigation Trace
 
-The live run created one real Session and connected one self-hosted environment.
-The same Session was used for all four captured turns:
+The latest browser-triggered live run (`20261002T200149Z`) created one real
+Session and connected one self-hosted environment. The same Session was used
+for all four captured turns:
 
 | Turn | Captured event records | Retrieved Session Items | Outcome |
 | --- | ---: | ---: | --- |
-| initial investigation | 2,363 | 25 | completed |
-| contradictory-evidence reassessment | 694 | 29 | completed |
-| remediation proposal | 813 | 34 | completed |
-| post-remediation verification | 1,679 | 64 | completed |
+| initial investigation | 1,813 | 5 | completed |
+| contradictory-evidence reassessment | 1,143 | 5 | completed |
+| remediation proposal | 1,039 | 5 | completed |
+| post-remediation verification | 1,479 | 5 | completed |
 
 The controller captured environment connection events, streamed events,
 turn outcomes, tool and shell interaction records, retrieved items, and final
@@ -214,11 +228,16 @@ event and final-output evidence, not private hidden chain-of-thought.
 
 The local console adds a separate SSE stream for sanitized controller lifecycle
 events. Browser-visible evidence is labelled as observed, controller-owned, or
-reserved for a future live Agent run; it does not present private model
-chain-of-thought as UI content. The customer payment surface uses the same
+live Session evidence; it does not present private model chain-of-thought as UI
+content. The customer payment surface uses the same
 observed checkout envelope to present a business-level failure first and a
 technical detail dialog second; the browser still calls only the local
-controller's fixed checkout route.
+controller's fixed checkout route. A browser-level reset and payment probe were
+also re-run on this branch: the target reached `Fault ready`, the probe returned
+HTTP 504 with `checkout_dependency_timeout`, and the Agents API start control
+became available while the old live-run view was hidden. The subsequent browser
+start is recorded as `workbench_live_run_requested` with `entrypoint=browser`
+in the latest controller event artifact.
 
 ## 16. Failures and Limitations
 
@@ -315,8 +334,9 @@ the Codex conversation.
 Factual observation at this boundary: the local target, self-hosted executor,
 real managed Agent session, multiple investigation turns, contradiction test,
 explicit approval, controlled target-only remediation, and same-session
-post-remediation verification are demonstrated. The Workbench now exposes the
-approval step for future approval-pending runs and shows the before/after
-evidence after completion. The result is limited to this isolated synthetic
-experiment and does not decide the final ARMIE architecture or recommend
-production adoption.
+post-remediation verification are demonstrated. Two complete live runs are
+retained in the local evidence history, including the latest browser-triggered
+run. The Workbench exposes the approval step only for a pending same-session
+run and shows the before/after evidence after completion. The result is
+limited to this isolated synthetic experiment and does not decide the final
+ARMIE architecture or recommend production adoption.

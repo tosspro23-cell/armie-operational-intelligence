@@ -20,12 +20,14 @@ configuration and restart the synthetic target container.
 
 ## Current execution status
 
-Source, Docker, and the deterministic local incident validation are implemented
-and demonstrated. The real acceptance run is only complete after
-`SPIKE_REPORT.md` records an actual session ID and the captured JSONL evidence
-under `artifacts/runs/`. The current run stops before session creation when the
-two required credentials are missing. Do not infer completion from a green
-unit-test or local-service run.
+Docker, the deterministic local incident, and real saved-agent acceptance runs
+have been demonstrated. The latest run was started from the browser Workbench
+button and completed the same-session approval continuation and
+post-remediation verification. The purple Agents API Control Room now groups
+Session identity, investigation turns, approval, controlled remediation,
+verification, and observable controller events; the blue Payment API Workspace
+groups customer impact and service evidence. Do not infer live completion from
+a green unit-test or frontend build alone.
 
 ## Prerequisites
 
@@ -55,11 +57,17 @@ The tests do not call OpenAI and do not replace the real acceptance run.
 
 ## Open the local SRE Console
 
-The UI is a presentation layer over the same local controller. It does not
-create an Agent API session in this first slice; it shows real target evidence,
-controller lifecycle events, the read-only executor boundary, and the explicit
-approval gate. The browser receives no credentials and cannot issue arbitrary
-commands.
+The UI is a presentation and control layer over the local Controller. The
+browser never receives credentials, Docker access, or arbitrary command
+capabilities. It can run either of two deliberately separate modes:
+
+- **Start local validation** runs the deterministic controller-only proof. It
+  is useful for demonstrating the payment symptom and read-only evidence
+  boundary without API usage.
+- **Start Agents API investigation** starts one real Session from the saved SRE
+  Agent, connects the self-hosted executor in Docker, streams observable
+  session evidence, pauses at the human approval gate, and continues the same
+  Session through controlled remediation and independent verification.
 
 From the repository root, install the isolated UI dependencies once:
 
@@ -69,18 +77,32 @@ python3 -m venv .ui-venv
 npm ci --prefix experiments/openai-agents-sre-local-spike/ui
 ```
 
-Then start the controller and Vite in separate terminals:
+Then start both local processes with:
 
 ```bash
-.ui-venv/bin/python -m uvicorn controller.web_api:app --app-dir . --host 127.0.0.1 --port 8787
-npm --prefix experiments/openai-agents-sre-local-spike/ui run dev -- --host 127.0.0.1 --port 5173
+./scripts/start_sre_ui.sh
 ```
 
-Open <http://127.0.0.1:5173> and choose **Start local validation**. The
-console will reproduce the real checkout fault, stream controller events over
-SSE, expose read-only logs/metrics/configuration/runbook evidence, and stop at
-the approval panel. The Agent panel remains `not connected` until the later
-real Agents API run.
+Open <http://127.0.0.1:5173>. For the real live demonstration, choose
+**Start Agents API investigation**. The page will reproduce the checkout
+fault, create the real Session, show the investigation turns and event
+metadata, present the evidence-backed proposal, and enable Approve/Deny only
+while the live run is waiting for a decision. After approval, the same Session
+must inspect new health, checkout, metrics, and log evidence before the page
+shows recovery.
+
+The **Reset fault** action is a preparation step, not another validation run:
+it recreates the target with the deterministic fault and leaves the target in
+`Fault ready`, so **Start Agents API investigation** becomes available without
+requiring terminal commands. The blue payment controls and evidence panels are
+the synthetic service workspace; the purple Agents API Control Room owns the
+Session, investigation turns, proposal, approval, event stream, and
+same-session recovery check.
+
+The credentials are loaded by the local Controller process from the ignored
+`.env.local` when present. They are never sent to the browser. The terminal CLI
+remains available as a diagnostic fallback, but it is no longer required for
+the normal customer-facing demonstration.
 
 ## Prepare and run the local service
 

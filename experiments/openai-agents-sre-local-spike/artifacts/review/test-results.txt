@@ -2,7 +2,7 @@
 PASS
 
 ./.ui-venv/bin/python -m unittest discover -s tests -v
-Ran 29 tests
+Ran 32 tests
 OK (skipped=1 opt-in Docker integration test)
 
 ARMIE_RUN_DOCKER_INTEGRATION=1 ./.ui-venv/bin/python -m unittest tests.test_docker_integration -v
@@ -14,6 +14,11 @@ PASS
 
 npm --prefix experiments/openai-agents-sre-local-spike/ui run build
 PASS (vite build)
+
+Browser-triggered live run `20261002T200149Z`
+PASS; real Session created from the saved Agent, self-hosted environment
+connected, four turns completed, explicit Workbench approval resumed the same
+Session, controlled remediation executed, and same-Session verification passed.
 
 ./.ui-venv/bin/python -m controller.cli resume --help
 PASS (resume command exposes explicit approve/deny decision)

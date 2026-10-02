@@ -15,3 +15,8 @@ were found. The only Authorization-shaped match is an intentional unit-test
 fixture. `.env.example` uses placeholders and runtime identifiers are read from
 the local environment. Repository visibility was not changed; public release
 still requires the user's separate visibility decision.
+
+Latest browser-run review evidence scan: PASS. The current review directory
+contains zero actual credential-shaped values, zero Authorization header values,
+and zero signed-URL markers. The only credential-related lines are sanitized
+presence statuses and explicit redaction markers.

@@ -1,8 +1,9 @@
 """Local-only FastAPI presentation and control API for the SRE console.
 
-This module is a thin adapter over the existing deterministic controller. It
-does not create an Agent, expose arbitrary commands, or replace the Agents API
-session runner. The browser receives sanitized state and lifecycle events only.
+This module is a thin local adapter over the deterministic controller and the
+real Agents API session runner. The browser can request one bounded live run,
+but it receives only sanitized state and lifecycle events; it never receives
+credentials, Docker access, or arbitrary commands.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from .cli import (
     compose_stop,
     compose_up,
     new_run,
+    run_real,
     prepare_runtime,
     validate_executor_boundary,
 )
@@ -141,11 +143,89 @@ def _turn_snapshot(run_dir: Path, label: str) -> dict[str, Any]:
     }
 
 
+def _empty_live_run_snapshot(
+    status: str,
+    run_id: str | None = None,
+    message: str | None = None,
+) -> dict[str, Any]:
+    """Return a stable shape while a browser-started run has no session yet."""
+
+    return {
+        "available": True,
+        "run_id": run_id or "",
+        "updated_at": utc_now(),
+        "status": status,
+        "message": message or "",
+        "identity": {},
+        "target": {
+            "health": None,
+            "metrics": None,
+            "checkout_samples": 0,
+            "checkout_statuses": [],
+            "latest_checkout": None,
+            "latest_probe": None,
+        },
+        "timeline": None,
+        "session": {
+            "session_id": None,
+            "environment_id": None,
+            "connected": False,
+            "model": config.MODEL,
+        },
+        "turns": [
+            {
+                "label": label,
+                "status": "not_available",
+                "final": "",
+                "event_count": 0,
+                "event_types": {},
+            }
+            for label in (
+                "initial_investigation",
+                "contradictory_evidence_reassessment",
+                "remediation_proposal",
+                "post_remediation_verification",
+            )
+        ],
+        "agent_event_type_counts": {},
+        "controller_timeline": [],
+        "approval": None,
+        "proposal": {
+            "text": "",
+            "mutation_executed": False,
+            "approval_recorded": False,
+            "verification_completed": False,
+        },
+    }
+
+
 def live_run_snapshot() -> dict[str, Any]:
     """Expose only redacted, read-only evidence from the latest real API run."""
 
-    run_dir = _latest_agents_run()
+    with live_resume_lock:
+        active = _live_run_active()
+        current_run_dir = live_run_run_dir
+        current_result = live_run_result
+
+    if current_run_dir is not None and not current_run_dir.exists() and not active:
+        current_run_dir = None
+    run_dir = current_run_dir or _latest_agents_run()
     if run_dir is None:
+        if active:
+            return _empty_live_run_snapshot(
+                "starting", message="Preparing the local target and Agents API session."
+            )
+        return {"available": False, "message": "No real Agents API run artifacts are available."}
+
+    if not (run_dir / "session.json").is_file():
+        if active or current_result not in (None, 0):
+            return _empty_live_run_snapshot(
+                "starting" if active else "failed",
+                run_dir.name,
+                "The live run has not created a session yet."
+                if active
+                else "The live run stopped before session creation.",
+            )
         return {"available": False, "message": "No real Agents API run artifacts are available."}
 
     identity = _read_json_file(run_dir / "runtime_identity.json")
@@ -178,17 +258,41 @@ def live_run_snapshot() -> dict[str, Any]:
         record for record in probes if str(record.get("label", "")).startswith("checkout_")
     ]
     latest_probe = probes[-1] if probes else {}
-    status = "running"
-    if "approval_decision" in kinds:
-        status = "approved_or_denied"
+    live_timeline = next(
+        (
+            record.get("payload")
+            for record in reversed(controller_records)
+            if record.get("kind") == "contradictory_observation"
+            and isinstance(record.get("payload"), dict)
+        ),
+        None,
+    )
+    approval = _read_json_file(run_dir / "approval_record.json")
+    verification_completed = (run_dir / "post_remediation_verification_final.md").is_file()
+    if "run_failed" in kinds:
+        status = "failed"
+    elif isinstance(approval, dict):
+        if not approval.get("approved"):
+            status = "denied"
+        elif verification_completed:
+            status = "completed"
+        elif mutation_executed:
+            status = "verification_running"
+        else:
+            status = "remediation_running"
     elif proposal_text:
         status = "approval_pending"
+    elif active:
+        status = "running"
+    else:
+        status = "failed"
 
     return {
         "available": True,
         "run_id": run_dir.name,
         "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime, tz=timezone.utc).isoformat(),
         "status": status,
+        "message": "",
         "identity": identity,
         "target": {
             "health": next(
@@ -201,6 +305,7 @@ def live_run_snapshot() -> dict[str, Any]:
             "latest_checkout": redact(checkout_probes[-1]) if checkout_probes else None,
             "latest_probe": redact(latest_probe),
         },
+        "timeline": redact(live_timeline) if isinstance(live_timeline, dict) else None,
         "session": {
             "session_id": identity.get("agents_api_session_id"),
             "environment_id": identity.get("agents_api_environment_id"),
@@ -215,11 +320,12 @@ def live_run_snapshot() -> dict[str, Any]:
         ],
         "agent_event_type_counts": _event_type_counts(agent_records),
         "controller_timeline": controller_timeline[-80:],
+        "approval": redact(approval) if isinstance(approval, dict) else None,
         "proposal": {
             "text": proposal_text,
             "mutation_executed": mutation_executed,
             "approval_recorded": "approval_decision" in kinds,
-            "verification_completed": (run_dir / "post_remediation_verification_final.md").is_file(),
+            "verification_completed": verification_completed,
         },
     }
 
@@ -319,7 +425,39 @@ class LocalConsole:
         return self._launch(self._run_local)
 
     def reset_local(self) -> dict[str, Any]:
-        return self._launch(self._run_local)
+        """Restore the deterministic fault and leave the target ready for a run.
+
+        Reset is intentionally different from local validation. It prepares a
+        clean faulted target without consuming the local validation lifecycle,
+        so the operator can reset first and then launch the real Agents API
+        investigation from the Workbench.
+        """
+
+        return self._launch(self._reset_fault)
+
+    def _reset_fault(self) -> None:
+        self._begin_run()
+        try:
+            prepare_runtime()
+            compose_up(force_recreate=True)
+            health = wait_for_health()
+            metrics = request_json("/metrics")
+            downstream = request_json("/diagnostics/downstream")
+            timeline = request_json("/diagnostics/timeline")
+            with self.lock:
+                self.state["target"]["health"] = health
+                self.state["target"]["metrics"] = metrics
+                self.state["target"]["downstream"] = downstream
+                self.state["target"]["timeline"] = timeline
+                self.state["target"]["last_checkout"] = None
+                self.state["phase"] = "fault_ready"
+            self.capture.controller("fault_reset", {"status": "ready", "checkout_expected": 504})  # type: ignore[union-attr]
+            self.emit("target.health.observed", health)
+            self.emit("fault.reset", {"checkout_expected": 504})
+        except Exception as exc:
+            safe_error = str(redact(str(exc)))
+            self.set_state(phase="failed", error=safe_error)
+            self.emit("ui.run.failed", {"error_type": type(exc).__name__, "error": safe_error})
 
     def simulate_payment(self) -> dict[str, Any]:
         """Run one fixed synthetic checkout for the customer-facing demo.
@@ -526,6 +664,83 @@ class LocalConsole:
 console = LocalConsole()
 live_resume_lock = threading.RLock()
 live_resume_process: subprocess.Popen[bytes] | None = None
+live_run_thread: threading.Thread | None = None
+live_run_run_dir: Path | None = None
+live_run_decision: bool | None = None
+live_run_approval_event = threading.Event()
+live_run_result: int | None = None
+
+
+def _live_run_active() -> bool:
+    return live_run_thread is not None and live_run_thread.is_alive()
+
+
+def _wait_for_live_approval(run_dir: Path) -> bool:
+    """Block the real run until the Workbench records one explicit decision."""
+
+    with live_resume_lock:
+        if live_run_run_dir != run_dir:
+            raise RuntimeError("Workbench approval does not match the active live run")
+    while not live_run_approval_event.wait(timeout=0.5):
+        if not _live_run_active():
+            raise RuntimeError("the Workbench live run stopped before approval")
+    with live_resume_lock:
+        if live_run_decision is None:
+            raise RuntimeError("Workbench approval was not recorded")
+        return live_run_decision
+
+
+def _run_live_in_background(run_dir: Path) -> None:
+    global live_run_result
+    try:
+        live_run_result = run_real(
+            approve_remediation=False,
+            keep_target=True,
+            approval_provider=_wait_for_live_approval,
+            prepared_run=run_dir,
+        )
+    finally:
+        live_run_approval_event.set()
+
+
+def start_live_run() -> dict[str, Any]:
+    """Start one browser-controlled real Agents API run."""
+
+    try:
+        config.require_openai_api_key()
+        config.require_executor_api_key()
+        config.require_runtime_identifiers()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="controller credential readiness is unavailable") from exc
+
+    global live_run_thread, live_run_run_dir, live_run_decision, live_run_result
+    with live_resume_lock:
+        if _live_run_active():
+            raise HTTPException(status_code=409, detail="a live Agents API run is already active")
+        if live_resume_process is not None and live_resume_process.poll() is None:
+            raise HTTPException(status_code=409, detail="a live approval continuation is already running")
+        live_run_run_dir = new_run()[0]
+        EventCapture(live_run_run_dir).controller(
+            "workbench_live_run_requested",
+            {"entrypoint": "browser", "run_id": live_run_run_dir.name},
+        )
+        live_run_decision = None
+        live_run_result = None
+        live_run_approval_event.clear()
+        live_run_thread = threading.Thread(
+            target=_run_live_in_background,
+            args=(live_run_run_dir,),
+            daemon=True,
+            name="armie-live-agents-run",
+        )
+        live_run_thread.start()
+        return {
+            "status": "accepted",
+            "run_id": live_run_run_dir.name,
+            "message": "The real Agents API investigation has started.",
+        }
+
+
 app = FastAPI(title="ARMIE SRE Local Console", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
@@ -559,9 +774,14 @@ def get_live_run() -> dict[str, Any]:
     return live_run_snapshot()
 
 
+@app.post("/api/live-run/start", status_code=202)
+def begin_live_run() -> dict[str, Any]:
+    return start_live_run()
+
+
 @app.post("/api/live-run/approval", status_code=202)
 def approve_live_run(request: LiveApprovalRequest) -> dict[str, Any]:
-    """Start the bounded same-session approval continuation from the Workbench."""
+    """Record a Workbench decision for the active same-session live run."""
 
     snapshot = live_run_snapshot()
     if not snapshot.get("available") or snapshot.get("status") != "approval_pending":
@@ -577,6 +797,14 @@ def approve_live_run(request: LiveApprovalRequest) -> dict[str, Any]:
     if not isinstance(run_id, str) or not run_id:
         raise HTTPException(status_code=409, detail="live run identifier is unavailable")
     with live_resume_lock:
+        if _live_run_active() and live_run_run_dir is not None and live_run_run_dir.name == run_id:
+            global live_run_decision
+            if live_run_decision is not None:
+                raise HTTPException(status_code=409, detail="live approval decision is already recorded")
+            live_run_decision = request.decision == "approve"
+            live_run_approval_event.set()
+            return {"status": "accepted", "run_id": run_id, "decision": request.decision}
+
         global live_resume_process
         if live_resume_process is not None and live_resume_process.poll() is None:
             raise HTTPException(status_code=409, detail="live approval continuation is already running")
