@@ -354,6 +354,8 @@ class LocalConsole:
                 "downstream": None,
                 "timeline": None,
                 "last_checkout": None,
+                "incident_checkout": None,
+                "verification_checkout": None,
             },
             "agent": {
                 "status": "not_connected",
@@ -450,6 +452,8 @@ class LocalConsole:
                 self.state["target"]["downstream"] = downstream
                 self.state["target"]["timeline"] = timeline
                 self.state["target"]["last_checkout"] = None
+                self.state["target"]["incident_checkout"] = None
+                self.state["target"]["verification_checkout"] = None
                 self.state["phase"] = "fault_ready"
             self.capture.controller("fault_reset", {"status": "ready", "checkout_expected": 504})  # type: ignore[union-attr]
             self.emit("target.health.observed", health)
@@ -478,10 +482,15 @@ class LocalConsole:
             raise HTTPException(status_code=503, detail="synthetic checkout is unavailable") from exc
 
         with self.lock:
-            self.state["target"]["last_checkout"] = {
+            observed_checkout = {
                 "label": "ui_simulated_checkout",
                 **checkout,
             }
+            self.state["target"]["last_checkout"] = observed_checkout
+            if checkout.get("status") == 200:
+                self.state["target"]["verification_checkout"] = observed_checkout
+            else:
+                self.state["target"]["incident_checkout"] = observed_checkout
             self.state["target"]["metrics"] = metrics
         body = checkout.get("body", {}) if isinstance(checkout.get("body"), dict) else {}
         self.emit(
@@ -519,6 +528,8 @@ class LocalConsole:
                     "downstream": None,
                     "timeline": None,
                     "last_checkout": None,
+                    "incident_checkout": None,
+                    "verification_checkout": None,
                 },
             }
             capture.controller("ui_run_started", {"run_id": run_dir.name})
@@ -546,10 +557,12 @@ class LocalConsole:
                 self.state["target"]["metrics"] = request_json("/metrics")
                 self.state["target"]["downstream"] = request_json("/diagnostics/downstream")
                 self.state["target"]["timeline"] = timeline
-                self.state["target"]["last_checkout"] = next(
+                incident_checkout = next(
                     (item for item in reversed(probes) if item["label"].startswith("checkout_")),
                     None,
                 )
+                self.state["target"]["last_checkout"] = incident_checkout
+                self.state["target"]["incident_checkout"] = incident_checkout
                 self.state["phase"] = "approval_required"
                 self.state["proposal"] = self._proposal()
             self.emit("incident.reproduced", {"checkout_status": 504})
@@ -580,12 +593,33 @@ class LocalConsole:
         }
 
     def approve(self, request: ApprovalRequest) -> dict[str, Any]:
+        # The incident worker may still be returning immediately after it emits
+        # approval.required. Wait for that exact worker before atomically
+        # recording an approval and installing the remediation worker. This
+        # prevents an explicit approval from being recorded and then rejected
+        # by _launch() as a transient 409.
         with self.lock:
             proposal = self.state.get("proposal")
             if self.state.get("phase") != "approval_required" or not proposal:
                 raise HTTPException(status_code=409, detail="no approval is currently required")
             if request.proposal_id != proposal["id"]:
                 raise HTTPException(status_code=409, detail="proposal identifier does not match")
+            incident_worker = self.worker
+
+        if incident_worker is not None and incident_worker.is_alive():
+            incident_worker.join(timeout=2)
+
+        with self.lock:
+            proposal = self.state.get("proposal")
+            if self.state.get("phase") != "approval_required" or not proposal:
+                raise HTTPException(status_code=409, detail="approval state changed while waiting")
+            if request.proposal_id != proposal["id"]:
+                raise HTTPException(status_code=409, detail="proposal identifier does not match")
+            if incident_worker is not None and incident_worker.is_alive():
+                raise HTTPException(
+                    status_code=409,
+                    detail="incident preparation is still finishing; retry approval shortly",
+                )
             approved = request.decision == "approve"
             self.state["approval"] = {
                 "decision": request.decision,
@@ -593,11 +627,14 @@ class LocalConsole:
                 "recorded_at": utc_now(),
             }
             self.state["phase"] = "remediation_running" if approved else "approval_denied"
+            if approved:
+                self.worker = threading.Thread(target=self._run_remediation, daemon=True)
+                self.worker.start()
         self.emit("approval.recorded", self.snapshot()["approval"])
         if not approved:
             self.emit("remediation.denied", {"reason": "explicit human denial"})
             return self.snapshot()
-        return self._launch(self._run_remediation)
+        return self.snapshot()
 
     def _run_remediation(self) -> None:
         try:
@@ -613,6 +650,7 @@ class LocalConsole:
             with self.lock:
                 self.state["target"]["health"] = health
                 self.state["target"]["last_checkout"] = checkout
+                self.state["target"]["verification_checkout"] = checkout
                 self.state["target"]["metrics"] = metrics
                 self.state["verification"] = {
                     "health": health,

@@ -9,6 +9,8 @@ type TargetState = {
   downstream: JsonMap | null;
   timeline: JsonMap | null;
   last_checkout: JsonMap | null;
+  incident_checkout: JsonMap | null;
+  verification_checkout: JsonMap | null;
 };
 
 type Proposal = {
@@ -108,6 +110,8 @@ const initialState: ConsoleState = {
     downstream: null,
     timeline: null,
     last_checkout: null,
+    incident_checkout: null,
+    verification_checkout: null,
   },
   agent: {
     status: "not_connected",
@@ -269,9 +273,18 @@ export default function App() {
     }
   }, []);
 
+  const refreshEvents = useCallback(async () => {
+    try {
+      const result = await getJson<{ data: ConsoleEvent[] }>("/api/events");
+      setEvents(result.data.slice(-100));
+    } catch {
+      // The EventSource reconnect path and the normal poll can recover later.
+    }
+  }, []);
+
   useEffect(() => {
     void refreshState();
-    void getJson<{ data: ConsoleEvent[] }>("/api/events").then((result) => setEvents(result.data)).catch(() => undefined);
+    void refreshEvents();
     const source = new EventSource("/api/events/stream");
     const handle = (message: MessageEvent<string>) => {
       try {
@@ -289,11 +302,18 @@ export default function App() {
       }
     };
     for (const type of eventTypes) source.addEventListener(type, handle as EventListener);
-    source.onerror = () => setBackendError("SSE reconnecting — controller may be offline");
+    source.onopen = () => {
+      setBackendError(null);
+      void refreshEvents();
+    };
+    source.onerror = () => {
+      setBackendError("SSE reconnecting — controller may be offline");
+      void refreshEvents();
+    };
     return () => {
       source.close();
     };
-  }, [refreshState]);
+  }, [refreshEvents, refreshState]);
 
   useEffect(() => {
     void refreshEvidence();
@@ -349,6 +369,9 @@ export default function App() {
 
   const target = state.target;
   const checkoutResponse = target.last_checkout ?? {};
+  const incidentCheckoutResponse = target.incident_checkout ?? {};
+  const incidentCheckout = responseBody(incidentCheckoutResponse);
+  const incidentCheckoutStatus = statusOf(incidentCheckoutResponse);
   const checkout = responseBody(checkoutResponse);
   const downstream = responseBody(target.downstream);
   const metrics = responseBody(target.metrics);
@@ -653,7 +676,7 @@ export default function App() {
 
           {!liveRun ? <section className="panel verification-panel">
             <div className="panel-header"><div><div className="section-kicker">RECOVERY</div><h3>Before / after</h3></div><span className="provenance-chip observed">new evidence</span></div>
-            <div className="comparison"><div><span>Before</span><strong>{checkoutStatus === "—" ? "—" : `HTTP ${checkoutStatus}`}</strong><small>{stringOf(checkout.error_code, "Awaiting fault probe")}</small></div><div className="comparison-arrow">→</div><div><span>After</span><strong>{verification ? `HTTP ${statusOf(verification.checkout)}` : "—"}</strong><small>{verification?.verified ? "verified by new checkout" : "awaiting approved remediation"}</small></div></div>
+            <div className="comparison"><div><span>Before</span><strong>{incidentCheckoutStatus === "—" ? "—" : `HTTP ${incidentCheckoutStatus}`}</strong><small>{stringOf(incidentCheckout.error_code, "Awaiting fault probe")}</small></div><div className="comparison-arrow">→</div><div><span>After</span><strong>{verification ? `HTTP ${statusOf(verification.checkout)}` : "—"}</strong><small>{verification?.verified ? "verified by new checkout" : "awaiting approved remediation"}</small></div></div>
             {state.error ? <div className="error-inline">{state.error}</div> : null}
           </section> : null}
         </aside> : null}

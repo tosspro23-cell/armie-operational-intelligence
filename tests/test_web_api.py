@@ -4,7 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 
@@ -191,6 +191,59 @@ class WebConsoleContractTests(unittest.TestCase):
         console = LocalConsole()
         with self.assertRaises(HTTPException):
             console.approve(ApprovalRequest(decision="approve", proposal_id="missing"))
+
+    def test_approval_is_not_recorded_while_incident_worker_is_still_running(self) -> None:
+        console = LocalConsole()
+        console.state["run_id"] = "run-test"
+        console.state["phase"] = "approval_required"
+        console.state["proposal"] = console._proposal()
+        proposal_id = console.state["proposal"]["id"]
+        worker = Mock()
+        worker.is_alive.return_value = True
+        console.worker = worker
+
+        with self.assertRaises(HTTPException) as context:
+            console.approve(ApprovalRequest(decision="approve", proposal_id=proposal_id))
+
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertIsNone(console.snapshot()["approval"])
+        self.assertEqual(console.snapshot()["phase"], "approval_required")
+        worker.join.assert_called_once_with(timeout=2)
+
+    @patch("controller.web_api.apply_known_safe_remediation")
+    @patch("controller.web_api.snapshot_runtime")
+    @patch("controller.web_api.wait_for_health", return_value={"status": 200})
+    @patch("controller.web_api.request_json")
+    def test_remediation_preserves_incident_checkout_for_before_after_evidence(
+        self,
+        request_json,
+        wait_for_health,
+        snapshot_runtime,
+        apply_remediation,
+    ) -> None:
+        request_json.side_effect = [
+            {"status": 200, "body": {"status": "approved"}},
+            {"status": 200, "body": {"checkout_timeouts": 0}},
+        ]
+        console = LocalConsole()
+        incident = {
+            "label": "checkout_3",
+            "status": 504,
+            "body": {"error_code": "checkout_dependency_timeout"},
+        }
+        console.state["target"]["last_checkout"] = incident
+        console.state["target"]["incident_checkout"] = incident
+        with tempfile.TemporaryDirectory() as directory:
+            console.run_dir = Path(directory)
+            console.capture = EventCapture(console.run_dir)
+            console._run_remediation()
+
+        snapshot = console.snapshot()
+        self.assertEqual(snapshot["target"]["incident_checkout"]["status"], 504)
+        self.assertEqual(snapshot["target"]["verification_checkout"]["status"], 200)
+        self.assertEqual(snapshot["target"]["last_checkout"]["status"], 200)
+        self.assertTrue(snapshot["verification"]["verified"])
+        apply_remediation.assert_called_once_with(console.capture, approved=True)
 
     @patch("controller.web_api.request_json")
     def test_payment_simulation_uses_only_fixed_checkout_operation(self, request_json) -> None:

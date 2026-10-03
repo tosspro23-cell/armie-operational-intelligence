@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from controller.api import AgentApiClient, AgentApiError
 from controller.config import (
     credential_presence,
     require_executor_api_key,
@@ -26,6 +27,59 @@ from controller.runner import ExecutorProcess
 
 
 class ControllerTests(unittest.TestCase):
+    def test_session_items_are_retrieved_across_every_page(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            client = AgentApiClient(
+                "test-key",
+                EventCapture(Path(directory)),
+                "test-project",
+            )
+            pages = [
+                {
+                    "object": "list",
+                    "data": [{"id": "item-1"}],
+                    "first_id": "item-1",
+                    "last_id": "item-1",
+                    "has_more": True,
+                },
+                {
+                    "object": "list",
+                    "data": [{"id": "item-2"}],
+                    "first_id": "item-2",
+                    "last_id": "item-2",
+                    "has_more": False,
+                },
+            ]
+            with patch.object(client, "_request", side_effect=pages) as request:
+                result = client.list_items("session-test")
+
+        self.assertEqual([item["id"] for item in result["data"]], ["item-1", "item-2"])
+        self.assertEqual(result["first_id"], "item-1")
+        self.assertEqual(result["last_id"], "item-2")
+        self.assertFalse(result["has_more"])
+        self.assertEqual(
+            request.call_args_list[1].args[1],
+            "/agents/sessions/session-test/items?order=asc&limit=100&after=item-1",
+        )
+
+    def test_session_item_pagination_fails_closed_on_repeated_cursor(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            client = AgentApiClient(
+                "test-key",
+                EventCapture(Path(directory)),
+                "test-project",
+            )
+            repeated = {
+                "object": "list",
+                "data": [{"id": "item-1"}],
+                "first_id": "item-1",
+                "last_id": "item-1",
+                "has_more": True,
+            }
+            with patch.object(client, "_request", side_effect=[repeated, repeated]):
+                with self.assertRaises(AgentApiError):
+                    client.list_items("session-test")
+
     def test_compose_can_reuse_existing_images_explicitly(self) -> None:
         result = subprocess.CompletedProcess([], 0)
         with patch.dict("os.environ", {"ARMIE_REUSE_LOCAL_IMAGES": "1"}, clear=False):

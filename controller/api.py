@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from typing import Any, Callable
@@ -102,10 +103,48 @@ class AgentApiClient:
         return self._request("GET", f"/agents/sessions/{session_id}")
 
     def list_items(self, session_id: str) -> dict[str, Any]:
-        return self._request(
-            "GET",
-            f"/agents/sessions/{session_id}/items?order=asc&limit=100",
-        )
+        """Retrieve every root-agent item in stable oldest-to-newest order.
+
+        The API returns at most 100 items per page. A long investigation can
+        exceed that limit, so treating the first page as the complete turn may
+        hide the latest assistant response or a late tool failure.
+        """
+
+        items: list[Any] = []
+        cursor: str | None = None
+        first_id: Any = None
+        seen_cursors: set[str] = set()
+        while True:
+            query: dict[str, str | int] = {"order": "asc", "limit": 100}
+            if cursor is not None:
+                query["after"] = cursor
+            page = self._request(
+                "GET",
+                f"/agents/sessions/{session_id}/items?{urllib.parse.urlencode(query)}",
+            )
+            page_items = page.get("data")
+            if not isinstance(page_items, list):
+                raise AgentApiError("list session items", None, "response data is not a list")
+            if first_id is None:
+                first_id = page.get("first_id")
+            items.extend(page_items)
+            if not page.get("has_more"):
+                return {
+                    **page,
+                    "data": items,
+                    "first_id": first_id,
+                    "last_id": page.get("last_id"),
+                    "has_more": False,
+                }
+            next_cursor = page.get("last_id")
+            if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors:
+                raise AgentApiError(
+                    "list session items",
+                    None,
+                    "pagination did not provide a new last_id cursor",
+                )
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
 
     def stream_events(
         self,
