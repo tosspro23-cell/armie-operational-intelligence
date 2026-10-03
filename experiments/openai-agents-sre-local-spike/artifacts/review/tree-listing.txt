@@ -18,6 +18,7 @@ controller/web_api.py
 docker-compose.yml
 experiments/openai-agents-sre-local-spike/UI_SPEC.md
 experiments/openai-agents-sre-local-spike/artifacts/review/LIVE_RUN_SUMMARY.md
+experiments/openai-agents-sre-local-spike/artifacts/review/REVALIDATION_2026-10-03.md
 experiments/openai-agents-sre-local-spike/artifacts/review/approval-record.json
 experiments/openai-agents-sre-local-spike/artifacts/review/audit-findings.md
 experiments/openai-agents-sre-local-spike/artifacts/review/docker-diagnostics.md

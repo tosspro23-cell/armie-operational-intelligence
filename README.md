@@ -99,6 +99,11 @@ the synthetic service workspace; the purple Agents API Control Room owns the
 Session, investigation turns, proposal, approval, event stream, and
 same-session recovery check.
 
+After a completed run, the purple control room retains that Session as
+historical review evidence. The incident header and blue Payment API Workspace
+always show the target's current Controller state, so a later **Reset fault**
+cannot be confused with the previous run's recovered HTTP 200 result.
+
 The credentials are loaded by the local Controller process from the ignored
 `.env.local` when present. They are never sent to the browser. The terminal CLI
 remains available as a diagnostic fallback, but it is no longer required for

@@ -221,8 +221,8 @@ credential assignments and signed URLs embedded in free-form text. The
 deterministic tests verified artifact persistence, field-aware redaction,
 credential separation, approval denial, saved-agent payload construction, and
 final-item extraction.
-The live raw JSONL stream and per-turn artifacts are under the ignored run
-directory `artifacts/runs/20261001T185830Z/`; sanitized summaries and redacted
+The latest live raw JSONL stream and per-turn artifacts are under the ignored
+run directory `artifacts/runs/20261002T200149Z/`; sanitized summaries and redacted
 metadata are committed under the review directory. The UI presents observable
 event and final-output evidence, not private hidden chain-of-thought.
 
@@ -238,6 +238,13 @@ HTTP 504 with `checkout_dependency_timeout`, and the Agents API start control
 became available while the old live-run view was hidden. The subsequent browser
 start is recorded as `workbench_live_run_requested` with `entrypoint=browser`
 in the latest controller event artifact.
+
+A 2026-10-03 revalidation found that a completed Session's recovered target
+snapshot could visually override a newly reset current target. The UI now keeps
+completed Session evidence in the purple control room while the incident header
+and Payment API Workspace always use the current Controller target. Browser
+verification showed `Fault ready` and HTTP 504 alongside separately labelled
+retained Session evidence.
 
 ## 16. Failures and Limitations
 
@@ -267,9 +274,8 @@ Historical blockers and operational limitations:
   ownership conflict was resolved by using a unique experiment network.
 - The host `Documents` worktree also became content-read-inaccessible to shell
   commands during this run. The implementation branch was prepared in a
-  disposable `/tmp` clone from the exact `develop` commit to avoid overwriting
-  the user worktree. The original worktree must be rechecked after local file
-  access is restored.
+  separate worktree from the exact `develop` commit to avoid overwriting the
+  user worktree. Access is working in the current revalidation worktree.
 
 The approved-remediation Docker integration test passed on 2026-09-21. The
 real live run then passed the same boundary with explicit user approval and
@@ -278,6 +284,15 @@ the one-off executor container, so the controller safely stopped before
 mutation; the fallback label-based lookup was added and the subsequent resume
 succeeded. This is an operational limitation of the local one-off Compose
 lifecycle, not evidence of a second Session.
+
+The latest live stream contains one API `internal_error` event after all four
+top-level turns had completed and after remediation verification. Revalidation
+also found three executor containers from completed runs still running. This
+was a cleanup defect, not a turn failure: the evidence has four completed and
+zero failed/cancelled top-level turns. The controller now closes each SSE
+response explicitly and assigns/removes an exact per-run executor container;
+the three stale experiment-only containers were removed. This cleanup fix is
+deterministically tested but has not triggered a new paid Session run.
 
 ## 17. Files Changed
 
@@ -320,7 +335,7 @@ export ARMIE_SRE_AGENT_ID='...'
 export OPENAI_PROJECT_ID='...'
 ARMIE_REUSE_LOCAL_IMAGES=1 python3 -m controller.cli run
 # Resume an existing approval-pending live run after an explicit human decision.
-.ui-venv/bin/python -m controller.cli resume --run-id 20261001T185830Z --approve-remediation --keep-target
+.ui-venv/bin/python -m controller.cli resume --run-id <approval-pending-run-id> --approve-remediation --keep-target
 ./scripts/start_sre_ui.sh
 ```
 

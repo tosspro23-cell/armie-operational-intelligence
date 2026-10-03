@@ -22,3 +22,12 @@ Latest browser-run review evidence scan: PASS. The current review directory
 contains zero actual credential-shaped values, zero Authorization header values,
 and zero signed-URL markers. The only credential-related lines are sanitized
 presence statuses and explicit redaction markers.
+
+2026-10-03 revalidation scan: PASS for secrets. The tracked-tree and history
+credential-shaped matches resolve only to `.env.example` placeholders and the
+intentional redaction test fixture in `tests/test_controller.py`. Tracked
+non-example environment files: 0. Review evidence contains 0 Authorization
+header values, 0 signed URLs, 0 full Session IDs, 0 full environment IDs, and
+0 host-specific local paths. The latest ignored raw run contains 0 API-key or
+Authorization-header values. Public-readiness remains CONDITIONAL for the
+previously recorded history metadata/path reason; visibility was not changed.

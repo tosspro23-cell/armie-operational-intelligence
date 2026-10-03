@@ -1,8 +1,8 @@
 ./.ui-venv/bin/python -m compileall -q controller target_service tests
 PASS
 
-./.ui-venv/bin/python -m unittest discover -s tests -v
-Ran 32 tests
+./.ui-venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+Ran 35 tests
 OK (skipped=1 opt-in Docker integration test)
 
 ARMIE_RUN_DOCKER_INTEGRATION=1 ./.ui-venv/bin/python -m unittest tests.test_docker_integration -v
@@ -50,3 +50,17 @@ turns completed, same Session continued through approval and verification.
 Workbench approval guard:
 PASS; duplicate approval after completion returned HTTP 409 and did not run a
 second remediation.
+
+2026-10-03 read-only online revalidation:
+PASS; stored Session retrieve HTTP 200, identity matched, status idle.
+PASS; saved Session items HTTP 200, item_count=57, has_more=false.
+PASS; Saved Agent retrieve HTTP 200, identity matched, model=gpt-6-luna.
+No new Session or model turn was created.
+
+2026-10-03 lifecycle cleanup regression checks:
+PASS; deliberate StreamMonitor stop closes the open SSE response.
+PASS; executor cleanup targets only its exact per-run named container.
+
+2026-10-03 Workbench browser verification:
+PASS; current target shows Fault ready / HTTP 504 after Reset.
+PASS; prior completed Session remains separately labelled retained evidence.

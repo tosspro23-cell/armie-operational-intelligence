@@ -72,6 +72,33 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn("OPENAI_EXECUTOR_API_KEY", child)
         self.assertEqual(child["SESSION_REMOTE_URL"], "https://remote.invalid")
 
+    def test_executor_stop_removes_only_its_named_container(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            capture = EventCapture(Path(directory))
+            executor = ExecutorProcess(capture)
+            executor.container_name = "armie-sre-executor-test-123"
+            executor.process = Mock()
+            executor.process.poll.return_value = 0
+            with patch("controller.runner.subprocess.run") as run:
+                run.return_value = Mock(returncode=0, stdout="", stderr="")
+                executor.stop()
+            self.assertEqual(
+                run.call_args.args[0],
+                ["docker", "rm", "-f", "armie-sre-executor-test-123"],
+            )
+
+    def test_executor_cleanup_failure_does_not_mask_run_outcome(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            capture = EventCapture(Path(directory))
+            executor = ExecutorProcess(capture)
+            executor.container_name = "armie-sre-executor-test-456"
+            executor.process = Mock()
+            executor.process.poll.return_value = 0
+            with patch("controller.runner.subprocess.run", side_effect=OSError("docker unavailable")):
+                executor.stop()
+            content = (Path(directory) / "controller_events.jsonl").read_text()
+            self.assertIn('"error_type": "OSError"', content)
+
     def test_session_configuration_references_saved_agent_and_override(self) -> None:
         payload = session_payload("saved-agent-reference", "project-reference")
         self.assertEqual(payload["agent_id"], "saved-agent-reference")

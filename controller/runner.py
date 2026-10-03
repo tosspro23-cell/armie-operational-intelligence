@@ -34,6 +34,8 @@ class StreamMonitor:
         self.error: Exception | None = None
         self.opened = threading.Event()
         self.seen: list[tuple[str | None, Any]] = []
+        self._response: Any | None = None
+        self._response_lock = threading.Lock()
 
     def start(self) -> None:
         self.thread.start()
@@ -41,7 +43,9 @@ class StreamMonitor:
     def _read(self) -> None:
         try:
             for raw_name, payload in self.client.stream_events(
-                self.session_id, on_open=self.opened.set
+                self.session_id,
+                on_open=self.opened.set,
+                on_response=self._set_response,
             ):
                 self.capture.agent_event(payload, raw_name)
                 self.seen.append((raw_name, payload))
@@ -49,15 +53,33 @@ class StreamMonitor:
                 if self.stop_event.is_set():
                     break
         except Exception as exc:
-            self.error = exc
-            self.capture.controller("stream_error", {"error": str(exc)})
-            self.events.put((None, {"type": "controller.stream_error", "error": str(exc)}))
+            if not self.stop_event.is_set():
+                self.error = exc
+                self.capture.controller("stream_error", {"error": str(exc)})
+                self.events.put((None, {"type": "controller.stream_error", "error": str(exc)}))
         finally:
+            self._set_response(None)
             self.events.put((None, {"type": "controller.stream_closed"}))
+
+    def _set_response(self, response: Any | None) -> None:
+        with self._response_lock:
+            self._response = response
 
     def stop(self) -> None:
         self.stop_event.set()
-        self.thread.join(timeout=2)
+        with self._response_lock:
+            response = self._response
+        if response is not None:
+            try:
+                response.close()
+            except OSError:
+                pass
+        self.thread.join(timeout=5)
+        if self.thread.is_alive():
+            self.capture.controller(
+                "stream_stop_timeout",
+                {"session_id": self.session_id},
+            )
 
 
 class ExecutorProcess:
@@ -65,6 +87,7 @@ class ExecutorProcess:
         self.capture = capture
         self.process: subprocess.Popen[bytes] | None = None
         self.log_handle: Any = None
+        self.container_name: str | None = None
 
     def start(self, session: dict[str, Any]) -> None:
         environment = session.get("environment") or {}
@@ -77,6 +100,11 @@ class ExecutorProcess:
         log_path = self.capture.run_dir / "executor.log"
         self.log_handle = log_path.open("ab")
         child_env = self.executor_environment(remote_url, environment_id)
+        run_label = "".join(
+            character.lower() if character.isalnum() else "-"
+            for character in self.capture.run_dir.name
+        ).strip("-")
+        self.container_name = f"armie-sre-executor-{run_label}-{os.getpid()}"[:120]
         command = [
             "docker",
             "compose",
@@ -85,6 +113,8 @@ class ExecutorProcess:
             "run",
             "--rm",
             "--no-deps",
+            "--name",
+            self.container_name,
             "-e",
             "CODEX_API_KEY",
             "-e",
@@ -97,6 +127,7 @@ class ExecutorProcess:
             "executor_starting",
             {
                 "command": command,
+                "container_name": self.container_name,
                 "environment_id": environment_id,
                 "remote_url_present": True,
                 "passed_environment_names": [
@@ -136,13 +167,42 @@ class ExecutorProcess:
             raise RuntimeError(f"executor exited with code {self.process.returncode}")
 
     def stop(self) -> None:
-        if self.process is not None and self.process.poll() is None:
-            self.process.terminate()
+        if self.container_name is not None:
             try:
-                self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
+                cleanup = subprocess.run(
+                    ["docker", "rm", "-f", self.container_name],
+                    cwd=config.REPO_ROOT,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+                removed = cleanup.returncode == 0
+                already_absent = cleanup.returncode != 0
+                cleanup_error_type = None
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                removed = False
+                already_absent = False
+                cleanup_error_type = type(exc).__name__
+            self.capture.controller(
+                "executor_cleanup",
+                {
+                    "container_name": self.container_name,
+                    "removed": removed,
+                    "already_absent": already_absent,
+                    "error_type": cleanup_error_type,
+                },
+            )
+        if self.process is not None and self.process.poll() is None:
+            try:
                 self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=5)
         if self.log_handle is not None:
             self.log_handle.close()
 

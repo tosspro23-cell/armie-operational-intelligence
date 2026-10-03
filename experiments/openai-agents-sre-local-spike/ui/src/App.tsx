@@ -355,23 +355,19 @@ export default function App() {
   const timeline = responseBody(target.timeline);
   const healthStatus = statusOf(target.health);
   const checkoutStatus = statusOf(checkoutResponse);
-  const liveCheckout = liveRun?.target.latest_checkout ?? null;
-  const liveHealth = liveRun?.target.health ?? null;
-  const liveHealthBody = responseBody(liveHealth);
-  const liveMetrics = responseBody(liveRun?.target.metrics ?? null);
-  const liveCheckoutStatus = liveCheckout ? stringOf(liveCheckout.status) : "—";
-  const effectiveCheckoutResponse = liveCheckout ?? checkoutResponse;
+  const currentHealthBody = responseBody(target.health);
+  const effectiveCheckoutResponse = checkoutResponse;
   const effectiveCheckout = responseBody(effectiveCheckoutResponse);
-  const effectiveCheckoutStatus = liveCheckout ? liveCheckoutStatus : checkoutStatus;
-  const effectiveHealthStatus = liveHealth ? statusOf(liveHealth) : healthStatus;
-  const effectiveMetrics = liveRun ? liveMetrics : metrics;
-  const effectiveTimeline = liveRun?.timeline ? responseBody(liveRun.timeline) : timeline;
+  const effectiveCheckoutStatus = checkoutStatus;
+  const effectiveHealthStatus = healthStatus;
+  const effectiveMetrics = metrics;
+  const effectiveTimeline = timeline;
   const runtimeConfig = evidence.config?.runtime_config as JsonMap | undefined;
   const effectiveTimeoutBudget = runtimeConfig?.checkout_timeout_ms ?? effectiveTimeline.timeout_budget_ms;
   const checkoutFailed = effectiveCheckoutStatus !== "—" && effectiveCheckoutStatus !== "200";
   const verification = state.verification;
   const identity = state.identity;
-  const effectiveIdentity = liveRun?.identity ?? identity;
+  const effectiveIdentity = identity;
   const preIncident = typeof effectiveTimeline.pre_incident_observation === "object" && effectiveTimeline.pre_incident_observation !== null ? effectiveTimeline.pre_incident_observation as JsonMap : {};
   const incident = typeof effectiveTimeline.incident_observation === "object" && effectiveTimeline.incident_observation !== null ? effectiveTimeline.incident_observation as JsonMap : {};
   const timelineEvents: JsonMap[] = effectiveTimeline.pre_incident_observation ? [
@@ -397,16 +393,18 @@ export default function App() {
   const canStartLiveInvestigation = !busy && !liveRunActive && targetReadyForAgent;
   const liveEventTypes = Object.entries(liveRun?.agent_event_type_counts ?? {}).slice(-8);
   const liveControllerEvents = [...(liveRun?.controller_timeline ?? [])].reverse();
+  const sessionRunCheckoutStatus = liveRun?.target.latest_checkout ? stringOf(liveRun.target.latest_checkout.status) : "—";
+  const sessionRunCheckoutFailed = sessionRunCheckoutStatus !== "—" && sessionRunCheckoutStatus !== "200";
   const compactId = (value: string | null) => value ? value.includes("…") ? value : `…${value.slice(-12)}` : "—";
-  const observedServiceVersion = liveRun ? stringOf(liveHealthBody.version, stringOf(effectiveIdentity.target_service_version)) : stringOf(effectiveIdentity.target_service_version);
-  const displayedPhase = liveRun?.status === "completed" && liveRun.proposal.verification_completed
-    ? "verification_complete"
-    : liveRun?.status === "approval_pending"
-      ? "approval_required"
-      : liveRun?.status === "verification_running" || liveRun?.status === "remediation_running"
-        ? liveRun.status
-        : state.phase;
-  const displayedRunId = liveRun?.run_id || state.run_id;
+  const observedServiceVersion = stringOf(currentHealthBody.version, stringOf(effectiveIdentity.target_service_version));
+  const displayedPhase = state.phase;
+  const displayedRunId = state.run_id;
+  const historicalLiveRun = Boolean(liveRun && !liveRunActive);
+  const agentStateLabel = liveRunActive
+    ? (liveRun?.session.connected ? "connected" : "connecting")
+    : historicalLiveRun
+      ? "last run completed"
+      : state.agent.status.split("_").join(" ");
 
   return (
     <main className="app-shell">
@@ -426,8 +424,8 @@ export default function App() {
 
       <section className="notice-bar">
         <div>
-          <strong>{liveRun ? "Live Agents API approval preview" : "Deterministic validation mode"}</strong>
-          <span>{liveRun ? liveRun.status === "starting" ? "The Controller is preparing the target, creating a real Session, and connecting the isolated executor." : liveRun.status === "approval_pending" ? "The real Session has produced a proposal. Review the evidence below before approving or denying the bounded synthetic remediation." : liveRun.status === "completed" ? "The same Session independently verified new post-remediation evidence." : "This view shows the real Session evidence and current controlled lifecycle state." : "This console is exercising the local target and controller boundary. No Agent API session is connected."}</span>
+          <strong>{liveRunActive ? "Live Agents API approval preview" : historicalLiveRun ? "Current target with retained Session evidence" : "Deterministic validation mode"}</strong>
+          <span>{liveRunActive ? liveRun?.status === "starting" ? "The Controller is preparing the target, creating a real Session, and connecting the isolated executor." : liveRun?.status === "approval_pending" ? "The real Session has produced a proposal. Review the evidence below before approving or denying the bounded synthetic remediation." : "This view shows the active Session evidence and current controlled lifecycle state." : historicalLiveRun ? "Payment panels show the target now; the purple control room separately preserves the last completed real Session." : "This console is exercising the local target and controller boundary. No Agent API session is connected."}</span>
         </div>
         <span className={`provenance-chip ${liveRun ? "agent" : "controller"}`}>{liveRun ? "real session observed" : "controller-owned"}</span>
       </section>
@@ -465,8 +463,8 @@ export default function App() {
       <section className="metric-grid incident-status-grid">
         <StatusPill label="Target health" value={effectiveHealthStatus === "200" ? "Healthy" : effectiveHealthStatus === "—" ? "Not observed" : `HTTP ${effectiveHealthStatus}`} tone={effectiveHealthStatus === "200" ? "success" : "neutral"} />
         <StatusPill label="Checkout" value={effectiveCheckoutStatus === "200" ? "Recovered" : checkoutFailed ? `HTTP ${effectiveCheckoutStatus}` : "Not observed"} tone={checkoutFailed ? "danger" : effectiveCheckoutStatus === "200" ? "success" : "neutral"} />
-        <StatusPill label="Evidence boundary" value={liveRun ? "Read-only observed" : state.phase === "idle" ? "Not checked" : "Read-only verified"} tone={liveRun || state.phase !== "idle" ? "success" : "neutral"} />
-        <StatusPill label="Approval" value={liveRun ? (liveRun.proposal.approval_recorded ? "Recorded" : "Required") : state.approval ? stringOf(state.approval.decision) : state.proposal ? "Required" : "Not required"} tone={state.approval?.approved ? "success" : liveRun && !liveRun.proposal.approval_recorded ? "warning" : state.proposal ? "warning" : "neutral"} />
+        <StatusPill label="Evidence boundary" value={state.phase === "idle" ? "Not checked" : "Read-only verified"} tone={state.phase !== "idle" ? "success" : "neutral"} />
+        <StatusPill label="Approval" value={state.approval ? stringOf(state.approval.decision) : state.proposal ? "Required" : "Not required"} tone={state.approval?.approved ? "success" : state.proposal ? "warning" : "neutral"} />
       </section>
 
       <section className={`agent-control-room ${liveRun ? "has-live-run" : ""}`}>
@@ -479,24 +477,24 @@ export default function App() {
             <div className="agent-orbit"><span className="orbit-core">◎</span></div>
             <div>
               <h3>Agent API Session</h3>
-              <div className="agent-state"><span className={`dot ${liveRun?.session.connected ? "" : "muted-dot"}`} />{liveRun?.session.connected ? "connected" : state.agent.status.split("_").join(" ")}</div>
+              <div className="agent-state"><span className={`dot ${liveRun?.session.connected ? "" : "muted-dot"}`} />{agentStateLabel}</div>
             </div>
           </div>
-          <p className="agent-message">{liveRun ? `Saved SRE Agent session is connected. ${liveStatus}. Investigation evidence is being observed from redacted artifacts.` : "The Controller will create the real Session and keep credentials outside the browser."}</p>
+          <p className="agent-message">{liveRunActive ? `Saved SRE Agent session is connected. ${liveStatus}. Investigation evidence is being observed from redacted artifacts.` : historicalLiveRun ? `The last real Saved-Agent Session is retained as review evidence (${liveStatus}). It is not the current target state.` : "The Controller will create the real Session and keep credentials outside the browser."}</p>
           <button className="agent-button" disabled={!canStartLiveInvestigation} onClick={startLiveInvestigation}>
             <span>◎</span> {liveRun?.status === "completed" ? "Start another investigation" : "Start Agents API investigation"}
           </button>
-          <div className="agent-footnote"><span className="provenance-chip agent">{liveRun ? "live session evidence" : "ready after fault reset"}</span><small>{targetReadyForAgent ? "Target is ready for a real investigation." : "Reset the fault before starting a new Session."}</small></div>
+          <div className="agent-footnote"><span className="provenance-chip agent">{liveRunActive ? "live session evidence" : historicalLiveRun ? "retained session evidence" : "ready after fault reset"}</span><small>{targetReadyForAgent ? "Current target is ready for a real investigation." : "Reset the fault before starting a new Session."}</small></div>
         </div>
 
       {liveRun ? <section className="panel live-run-panel">
-        <div className="panel-header"><div><div className="section-kicker">LIVE AGENTS API RUN</div><h3>Investigation and approval from the real Session</h3></div><span className="provenance-chip agent">{liveStatus}</span></div>
-        <p className="panel-description">The Workbench is reading sanitized runtime artifacts and controller state. It shows observable outputs, event metadata, and tool activity summaries—not hidden chain-of-thought. {liveRun.status === "approval_pending" ? "Review the proposal and use the approval controls below." : liveRun.message || "The Controller is continuing the bounded workflow."}</p>
+        <div className="panel-header"><div><div className="section-kicker">{historicalLiveRun ? "RETAINED AGENTS API RUN" : "LIVE AGENTS API RUN"}</div><h3>Investigation and approval from the real Session</h3></div><span className="provenance-chip agent">{liveStatus}</span></div>
+        <p className="panel-description">The Workbench is reading sanitized runtime artifacts and controller state. It shows observable outputs, event metadata, and tool activity summaries—not hidden chain-of-thought. {historicalLiveRun ? `This completed run (${liveRun.run_id}) is retained evidence; the Payment API workspace below shows the target now.` : liveRun.status === "approval_pending" ? "Review the proposal and use the approval controls below." : liveRun.message || "The Controller is continuing the bounded workflow."}</p>
         <div className="live-run-meta">
           <div><span>Session</span><code>{compactId(liveRun.session.session_id)}</code></div>
           <div><span>Environment</span><code>{compactId(liveRun.session.environment_id)}</code></div>
           <div><span>Model</span><code>{stringOf(liveRun.session.model)}</code></div>
-          <div><span>Connection</span><strong className={liveRun.session.connected ? "live-good" : "live-warn"}>{liveRun.session.connected ? "connected" : "not observed"}</strong></div>
+          <div><span>{historicalLiveRun ? "Connection event" : "Connection"}</span><strong className={liveRun.session.connected ? "live-good" : "live-warn"}>{liveRun.session.connected ? (historicalLiveRun ? "observed" : "connected") : "not observed"}</strong></div>
         </div>
         <div className="live-run-grid">
           <div>
@@ -509,9 +507,9 @@ export default function App() {
             </div>
           </div>
           <div>
-            <div className="subsection-label">Current target and safety state</div>
+            <div className="subsection-label">Session-run target and safety state</div>
             <div className="live-facts">
-              <div><span>Payment response</span><strong className={checkoutFailed ? "live-warn" : "live-good"}>{liveCheckoutStatus === "—" ? "—" : `HTTP ${liveCheckoutStatus}`}</strong></div>
+              <div><span>Payment response</span><strong className={sessionRunCheckoutFailed ? "live-warn" : "live-good"}>{sessionRunCheckoutStatus === "—" ? "—" : `HTTP ${sessionRunCheckoutStatus}`}</strong></div>
               <div><span>Observed checkout samples</span><strong>{String(liveRun.target.checkout_samples)}</strong></div>
               <div><span>Mutation executed</span><strong className={liveRun.proposal.mutation_executed ? "live-warn" : "live-good"}>{liveRun.proposal.mutation_executed ? "yes" : "no"}</strong></div>
               <div><span>Approval recorded</span><strong>{liveRun.proposal.approval_recorded ? "yes" : "no"}</strong></div>
@@ -587,7 +585,7 @@ export default function App() {
             <div className="panel-header"><div><div className="section-kicker">SERVICE OBSERVABILITY</div><h3>What the target is telling us</h3></div><span className="provenance-chip observed">observed</span></div>
             <div className="metric-cards">
               <Metric label="Checkout status" value={effectiveCheckoutStatus === "—" ? "—" : `HTTP ${effectiveCheckoutStatus}`} detail={stringOf(effectiveCheckout.error_code, "No error code")} />
-              <Metric label="Dependency latency" value={liveMetrics.downstream_latency_ms ? `${stringOf(liveMetrics.downstream_latency_ms)} ms` : downstream.observed_latency_ms ? `${stringOf(downstream.observed_latency_ms)} ms` : "—"} detail="synthetic downstream" />
+              <Metric label="Dependency latency" value={metrics.downstream_latency_ms ? `${stringOf(metrics.downstream_latency_ms)} ms` : downstream.observed_latency_ms ? `${stringOf(downstream.observed_latency_ms)} ms` : "—"} detail="synthetic downstream" />
               <Metric label="Timeout budget" value={effectiveTimeoutBudget ? `${stringOf(effectiveTimeoutBudget)} ms` : "—"} detail="runtime configuration" />
               <Metric label="Error rate" value={timeoutRate === null ? "—" : `${timeoutRate}%`} detail={`${stringOf(effectiveMetrics.checkout_timeouts, "—")} timed out`} />
             </div>

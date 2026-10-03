@@ -111,6 +111,7 @@ class AgentApiClient:
         self,
         session_id: str,
         on_open: Callable[[], None] | None = None,
+        on_response: Callable[[Any | None], None] | None = None,
     ) -> Iterator[tuple[str | None, Any]]:
         """Yield parsed SSE payloads while preserving the raw event name."""
 
@@ -132,6 +133,8 @@ class AgentApiClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
+                if on_response is not None:
+                    on_response(response)
                 if on_open is not None:
                     on_open()
                 event_name: str | None = None
@@ -172,3 +175,6 @@ class AgentApiClient:
             raise AgentApiError("event stream", exc.code, str(detail)) from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise AgentApiError("event stream", None, str(redact(str(exc)))) from exc
+        finally:
+            if on_response is not None:
+                on_response(None)

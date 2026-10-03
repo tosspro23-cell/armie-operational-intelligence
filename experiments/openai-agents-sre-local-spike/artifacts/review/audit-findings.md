@@ -34,6 +34,14 @@ Demonstrated in live run `20261001T185830Z`:
 - explicit approval, controlled target-only remediation, and same-session
   post-remediation verification.
 
+Repeated from the browser in live run `20261002T200149Z`, including an explicit
+Workbench approval and the same-session post-remediation verification turn.
+
+Revalidated read-only on 2026-10-03: the Agents API returned HTTP 200 for the
+stored Session, its identity matched the retained run, its status was `idle`,
+57 saved items were retrievable, and the Saved Agent identity/model matched.
+No new Session or inference turn was created during this revalidation.
+
 Demonstrated after the Docker retry:
 
 - target health and real HTTP checkout fault;

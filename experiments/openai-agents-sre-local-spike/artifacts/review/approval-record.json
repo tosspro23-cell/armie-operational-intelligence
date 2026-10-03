@@ -1,7 +1,7 @@
 {
   "status": "approved",
   "approved": true,
-  "decision_source": "explicit_user_approval_in_continuation_turn",
+  "decision_source": "explicit_workbench_browser_approval",
   "session_id_label": "sess_…5f8929e815",
   "mutation_before_approval": false,
   "approval_gate": "controller_and_workbench_bounded_resume",

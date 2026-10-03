@@ -54,6 +54,12 @@ the customer symptom and service evidence, while the purple Agents API Control
 Room owns Session identity, investigation turns, approval, event stream,
 controlled remediation, and same-session recovery verification.
 
+Completed Session evidence remains visible in the purple region for review,
+but it is labelled as retained evidence. The incident header and blue Payment
+API Workspace use only the current Controller target state; resetting the fault
+therefore shows the current HTTP 504 while preserving the prior HTTP 200 proof
+inside the completed Session record.
+
 The **Customer Payment Surface** is a deliberately fixed, local-only payment
 demo. Clicking **Simulate payment** sends one `ui-demo-order` checkout through
 the FastAPI controller to the running target. A failure is shown first as a

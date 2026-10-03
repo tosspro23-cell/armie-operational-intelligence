@@ -59,3 +59,22 @@ explicit approval before mutation, allowlisted remediation, and independent
 same-session verification. Remaining limitations are the short post-change
 sample, the still-elevated synthetic downstream latency, and the known
 deployment/version metadata ambiguity recorded by the Agent.
+
+## 2026-10-03 revalidation note
+
+The saved Session and Agent were retrieved read-only from the Agents API:
+Session HTTP 200, stored identity matches, status `idle`, 57 saved items, and
+Saved Agent name/model `SRE agent for incident response` / `gpt-6-luna`.
+No new Session was created.
+
+The raw stream contains four completed and zero failed/cancelled top-level
+turns. One `internal_error` arrived after those turns and after verified
+remediation. Three completed-run executor containers were also found still
+running. The controller cleanup path now explicitly closes the SSE response
+and removes only its exact per-run executor container; deterministic tests cover
+both boundaries, and the stale experiment-only containers were removed.
+
+The Workbench now separates the current target from retained Session evidence.
+After Reset, browser verification showed current `Fault ready` / HTTP 504 in
+the incident and Payment API regions while the prior HTTP 200 remains labelled
+inside the retained purple Session evidence.
