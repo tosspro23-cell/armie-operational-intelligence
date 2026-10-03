@@ -31,11 +31,14 @@ def request_json(path: str, method: str = "GET", body: dict[str, Any] | None = N
                 "body": json.loads(response.read().decode("utf-8")),
             }
     except urllib.error.HTTPError as exc:
-        return {
-            "path": path,
-            "status": exc.code,
-            "body": json.loads(exc.read().decode("utf-8")),
-        }
+        try:
+            return {
+                "path": path,
+                "status": exc.code,
+                "body": json.loads(exc.read().decode("utf-8")),
+            }
+        finally:
+            exc.close()
 
 
 def wait_for_health(timeout: float = 60.0) -> dict[str, Any]:

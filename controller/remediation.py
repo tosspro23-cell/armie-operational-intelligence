@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from typing import Any
 
@@ -30,6 +31,7 @@ def apply_known_safe_remediation(capture: EventCapture, approved: bool) -> None:
     safe_path = config.FIXTURES_ROOT / "runtime_config_safe.json"
     destination = config.RUNTIME_ROOT / "runtime_config.json"
     safe_config: dict[str, Any] = json.loads(safe_path.read_text(encoding="utf-8"))
+    config.RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(safe_config, indent=2) + "\n", encoding="utf-8")
     container_result = subprocess.run(
         ["docker", "compose", "-f", str(config.COMPOSE_FILE), "ps", "-q", "target"],
@@ -61,9 +63,27 @@ def apply_known_safe_remediation(capture: EventCapture, approved: bool) -> None:
             "container_id": container_id,
         },
     )
+    # The initial incident boot uses RESET_RUNTIME_CONFIG=1.  A plain
+    # `compose restart` would preserve that container environment and the
+    # entrypoint would overwrite the approved safe config on every restart.
+    # Recreate only the target with the reset flag explicitly cleared; the
+    # named runtime volume remains intact and contains the approved config.
+    child_env = dict(os.environ)
+    child_env["RESET_RUNTIME_CONFIG"] = "0"
     result = subprocess.run(
-        ["docker", "compose", "-f", str(config.COMPOSE_FILE), "restart", "target"],
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(config.COMPOSE_FILE),
+            "up",
+            "-d",
+            "--no-build",
+            "--force-recreate",
+            "target",
+        ],
         cwd=config.REPO_ROOT,
+        env=child_env,
         check=False,
         capture_output=True,
         text=True,
@@ -72,7 +92,8 @@ def apply_known_safe_remediation(capture: EventCapture, approved: bool) -> None:
     capture.controller(
         "remediation_restart",
         {
-            "action": "restart_target_only",
+            "action": "restart_target_only_with_reset_disabled",
+            "reset_runtime_config": "0",
             "returncode": result.returncode,
             "stdout": result.stdout,
             "stderr": result.stderr,

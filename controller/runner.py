@@ -32,27 +32,54 @@ class StreamMonitor:
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self._read, daemon=True)
         self.error: Exception | None = None
+        self.opened = threading.Event()
+        self.seen: list[tuple[str | None, Any]] = []
+        self._response: Any | None = None
+        self._response_lock = threading.Lock()
 
     def start(self) -> None:
         self.thread.start()
 
     def _read(self) -> None:
         try:
-            for raw_name, payload in self.client.stream_events(self.session_id):
+            for raw_name, payload in self.client.stream_events(
+                self.session_id,
+                on_open=self.opened.set,
+                on_response=self._set_response,
+            ):
                 self.capture.agent_event(payload, raw_name)
+                self.seen.append((raw_name, payload))
                 self.events.put((raw_name, payload))
                 if self.stop_event.is_set():
                     break
         except Exception as exc:
-            self.error = exc
-            self.capture.controller("stream_error", {"error": str(exc)})
-            self.events.put((None, {"type": "controller.stream_error", "error": str(exc)}))
+            if not self.stop_event.is_set():
+                self.error = exc
+                self.capture.controller("stream_error", {"error": str(exc)})
+                self.events.put((None, {"type": "controller.stream_error", "error": str(exc)}))
         finally:
+            self._set_response(None)
             self.events.put((None, {"type": "controller.stream_closed"}))
+
+    def _set_response(self, response: Any | None) -> None:
+        with self._response_lock:
+            self._response = response
 
     def stop(self) -> None:
         self.stop_event.set()
-        self.thread.join(timeout=2)
+        with self._response_lock:
+            response = self._response
+        if response is not None:
+            try:
+                response.close()
+            except OSError:
+                pass
+        self.thread.join(timeout=5)
+        if self.thread.is_alive():
+            self.capture.controller(
+                "stream_stop_timeout",
+                {"session_id": self.session_id},
+            )
 
 
 class ExecutorProcess:
@@ -60,6 +87,7 @@ class ExecutorProcess:
         self.capture = capture
         self.process: subprocess.Popen[bytes] | None = None
         self.log_handle: Any = None
+        self.container_name: str | None = None
 
     def start(self, session: dict[str, Any]) -> None:
         environment = session.get("environment") or {}
@@ -71,13 +99,12 @@ class ExecutorProcess:
             )
         log_path = self.capture.run_dir / "executor.log"
         self.log_handle = log_path.open("ab")
-        child_env = os.environ.copy()
-        api_key = child_env.pop("OPENAI_API_KEY", "")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY disappeared before executor startup")
-        child_env["CODEX_API_KEY"] = api_key
-        child_env["SESSION_REMOTE_URL"] = remote_url
-        child_env["SESSION_ENVIRONMENT_ID"] = environment_id
+        child_env = self.executor_environment(remote_url, environment_id)
+        run_label = "".join(
+            character.lower() if character.isalnum() else "-"
+            for character in self.capture.run_dir.name
+        ).strip("-")
+        self.container_name = f"armie-sre-executor-{run_label}-{os.getpid()}"[:120]
         command = [
             "docker",
             "compose",
@@ -86,6 +113,8 @@ class ExecutorProcess:
             "run",
             "--rm",
             "--no-deps",
+            "--name",
+            self.container_name,
             "-e",
             "CODEX_API_KEY",
             "-e",
@@ -96,7 +125,17 @@ class ExecutorProcess:
         ]
         self.capture.controller(
             "executor_starting",
-            {"command": command, "environment_id": environment_id},
+            {
+                "command": command,
+                "container_name": self.container_name,
+                "environment_id": environment_id,
+                "remote_url_present": True,
+                "passed_environment_names": [
+                    "CODEX_API_KEY",
+                    "SESSION_REMOTE_URL",
+                    "SESSION_ENVIRONMENT_ID",
+                ],
+            },
         )
         self.process = subprocess.Popen(
             command,
@@ -106,6 +145,21 @@ class ExecutorProcess:
             stderr=subprocess.STDOUT,
         )
 
+    @staticmethod
+    def executor_environment(remote_url: str, environment_id: str) -> dict[str, str]:
+        """Build a minimal child environment without leaking the app key."""
+
+        child_env = os.environ.copy()
+        executor_key = child_env.pop("OPENAI_EXECUTOR_API_KEY", "")
+        child_env.pop("OPENAI_API_KEY", None)
+        child_env.pop("CODEX_API_KEY", None)
+        if not executor_key:
+            raise RuntimeError("OPENAI_EXECUTOR_API_KEY is required for executor startup")
+        child_env["CODEX_API_KEY"] = executor_key
+        child_env["SESSION_REMOTE_URL"] = remote_url
+        child_env["SESSION_ENVIRONMENT_ID"] = environment_id
+        return child_env
+
     def ensure_alive(self) -> None:
         if self.process is None:
             raise RuntimeError("executor has not been started")
@@ -113,42 +167,125 @@ class ExecutorProcess:
             raise RuntimeError(f"executor exited with code {self.process.returncode}")
 
     def stop(self) -> None:
-        if self.process is not None and self.process.poll() is None:
-            self.process.terminate()
+        if self.container_name is not None:
             try:
-                self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
+                cleanup = subprocess.run(
+                    ["docker", "rm", "-f", self.container_name],
+                    cwd=config.REPO_ROOT,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+                removed = cleanup.returncode == 0
+                already_absent = cleanup.returncode != 0
+                cleanup_error_type = None
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                removed = False
+                already_absent = False
+                cleanup_error_type = type(exc).__name__
+            self.capture.controller(
+                "executor_cleanup",
+                {
+                    "container_name": self.container_name,
+                    "removed": removed,
+                    "already_absent": already_absent,
+                    "error_type": cleanup_error_type,
+                },
+            )
+        if self.process is not None and self.process.poll() is None:
+            try:
                 self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=5)
         if self.log_handle is not None:
             self.log_handle.close()
 
 
+class AttachedExecutor:
+    """Observe an already-running self-hosted executor without restarting it."""
+
+    def __init__(self, container_id: str) -> None:
+        self.container_id = container_id
+
+    def ensure_alive(self) -> None:
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}", self.container_id],
+            cwd=config.REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0 or result.stdout.strip() != "running":
+            raise RuntimeError("attached self-hosted executor is not running")
+
+    def stop(self) -> None:
+        """The resumed controller must not stop an executor it did not create."""
+
+        return
+
+
 class SessionRunner:
-    def __init__(self, client: AgentApiClient, capture: EventCapture, session: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        client: AgentApiClient,
+        capture: EventCapture,
+        session: dict[str, Any],
+        executor: ExecutorProcess | AttachedExecutor | None = None,
+    ) -> None:
         self.client = client
         self.capture = capture
         self.session = session
         self.session_id = str(session["id"])
-        self.executor = ExecutorProcess(capture)
+        self.executor = executor or ExecutorProcess(capture)
 
     def start_executor(self) -> None:
         self.executor.start(self.session)
-        self.capture.write_json("runtime_identity.json", runtime_identity(self.session_id))
+        environment = self.session.get("environment", {})
+        agent = self.session.get("agent", {})
+        self.capture.write_json(
+            "runtime_identity.json",
+            runtime_identity(
+                self.session_id,
+                agent.get("id") if isinstance(agent, dict) else None,
+                environment.get("id") if isinstance(environment, dict) else None,
+            ),
+        )
 
-    def _next_event(self, monitor: StreamMonitor, timeout: float) -> Any:
+    def _next_event(self, monitor: StreamMonitor, timeout: float) -> Any | None:
+        """Return one event, or None while the open stream is temporarily quiet.
+
+        Agents API turns are asynchronous. A turn can remain queued or in
+        progress for longer than one queue poll interval without indicating a
+        failure. The overall waiters own the deadline; an empty short poll
+        must not stop the stream or executor.
+        """
+
         try:
             _, payload = monitor.events.get(timeout=timeout)
             return payload
-        except queue.Empty as exc:
-            monitor.stop()
+        except queue.Empty:
+            if monitor.error is not None:
+                monitor.stop()
+                self.executor.ensure_alive()
+                raise RuntimeError(f"Agents API event stream failed: {monitor.error}") from monitor.error
             self.executor.ensure_alive()
-            raise TimeoutError("timed out waiting for Agents API event") from exc
+            return None
 
     def _wait_connected(self, monitor: StreamMonitor, timeout: float = 180.0) -> None:
+        if not monitor.opened.wait(timeout=30):
+            raise TimeoutError("event stream did not open before sending work")
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             payload = self._next_event(monitor, min(5.0, deadline - time.monotonic()))
+            if payload is None:
+                continue
             kind = event_type(payload)
             if kind == "agent.session.environment.connected":
                 self.capture.controller("environment_connected", {})
@@ -159,41 +296,63 @@ class SessionRunner:
                 raise RuntimeError(str(payload))
         raise TimeoutError("self-hosted executor did not connect before timeout")
 
-    def _wait_turn_completed(self, monitor: StreamMonitor, timeout: float = 900.0) -> None:
+    def _wait_turn_completed(
+        self,
+        monitor: StreamMonitor,
+        timeout: float = 900.0,
+    ) -> tuple[str, Any]:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             payload = self._next_event(monitor, min(10.0, deadline - time.monotonic()))
+            if payload is None:
+                continue
             kind = event_type(payload)
             if kind == "agent.session.turn.completed":
-                self.capture.controller("turn_completed", {"session_id": self.session_id})
-                return
+                self.capture.controller(
+                    "turn_completed",
+                    {"session_id": self.session_id, "outcome": "completed"},
+                )
+                return "completed", payload
             if kind in {
                 "agent.session.turn.failed",
                 "agent.session.failed",
                 "agent.session.turn.cancelled",
                 "error",
             }:
+                outcome = "cancelled" if "cancel" in (kind or "") else "failed"
+                self.capture.controller(
+                    "turn_completed",
+                    {"session_id": self.session_id, "outcome": outcome},
+                )
                 raise AgentApiError("agent turn", None, json.dumps(payload))
             if kind == "controller.stream_error":
                 raise RuntimeError(str(payload))
         raise TimeoutError("agent turn did not complete before timeout")
 
-    def run_turn(self, label: str, message: str, wait_for_connection: bool = False) -> None:
+    def run_turn(
+        self,
+        label: str,
+        message: str,
+        wait_for_connection: bool = False,
+    ) -> dict[str, Any]:
         monitor = StreamMonitor(self.client, self.session_id, self.capture)
         monitor.start()
         try:
             if wait_for_connection:
                 self._wait_connected(monitor)
             else:
-                time.sleep(0.5)
+                if not monitor.opened.wait(timeout=30):
+                    raise TimeoutError("event stream did not open before follow-up")
                 self.executor.ensure_alive()
             self.capture.controller(
                 "session_input",
                 {"session_id": self.session_id, "label": label, "message": message},
             )
             self.client.send_message(self.session_id, message)
-            self._wait_turn_completed(monitor)
+            outcome, terminal_event = self._wait_turn_completed(monitor)
             session_state = self.client.retrieve_session(self.session_id)
+            items = self.client.list_items(self.session_id)
+            self.capture.write_json(f"{label}_items.json", items)
             self.capture.controller(
                 "session_state_retrieved",
                 {
@@ -202,9 +361,26 @@ class SessionRunner:
                     "required_actions": session_state.get("required_actions"),
                 },
             )
+            self.capture.controller(
+                "session_items_retrieved",
+                {
+                    "session_id": self.session_id,
+                    "label": label,
+                    "item_count": len(items.get("data", []))
+                    if isinstance(items.get("data"), list)
+                    else None,
+                },
+            )
+            return {
+                "label": label,
+                "session_id": self.session_id,
+                "outcome": outcome,
+                "terminal_event": terminal_event,
+                "events": list(monitor.seen),
+                "items": items,
+            }
         finally:
             monitor.stop()
 
     def stop(self) -> None:
         self.executor.stop()
-

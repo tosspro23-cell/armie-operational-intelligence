@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import socket
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Callable
 
-from .events import EventCapture
+from .events import EventCapture, redact
 
 
 class AgentApiError(RuntimeError):
@@ -17,7 +18,7 @@ class AgentApiError(RuntimeError):
         self.operation = operation
         self.status = status
         self.detail = detail
-        super().__init__(f"{operation} failed ({status or 'transport'}): {detail}")
+        super().__init__(f"{operation} failed ({status or 'transport'}): {redact(detail)}")
 
 
 class AgentApiClient:
@@ -25,10 +26,12 @@ class AgentApiClient:
         self,
         api_key: str,
         capture: EventCapture,
+        project_id: str,
         base_url: str = "https://api.openai.com/v1",
     ) -> None:
         self._api_key = api_key
         self._capture = capture
+        self._project_id = project_id
         self._base_url = base_url.rstrip("/")
 
     def _request(
@@ -44,6 +47,7 @@ class AgentApiClient:
             "Authorization": f"Bearer {self._api_key}",
             "OpenAI-Beta": "agents=v1",
             "Accept": accept,
+            "OpenAI-Project": self._project_id,
         }
         if data is not None:
             headers["Content-Type"] = "application/json"
@@ -62,19 +66,19 @@ class AgentApiClient:
                 )
                 return parsed
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            detail = redact(exc.read().decode("utf-8", errors="replace"))
             self._capture.controller(
                 "api_error",
                 {"method": method, "path": path, "status": exc.code, "detail": detail},
             )
-            raise AgentApiError(path, exc.code, detail) from exc
+            raise AgentApiError(path, exc.code, str(detail)) from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            detail = str(exc)
+            detail = redact(str(exc))
             self._capture.controller(
                 "api_error",
                 {"method": method, "path": path, "status": None, "detail": detail},
             )
-            raise AgentApiError(path, None, detail) from exc
+            raise AgentApiError(path, None, str(detail)) from exc
 
     def create_session(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/agents/sessions", payload)
@@ -98,7 +102,56 @@ class AgentApiClient:
     def retrieve_session(self, session_id: str) -> dict[str, Any]:
         return self._request("GET", f"/agents/sessions/{session_id}")
 
-    def stream_events(self, session_id: str) -> Iterator[tuple[str | None, Any]]:
+    def list_items(self, session_id: str) -> dict[str, Any]:
+        """Retrieve every root-agent item in stable oldest-to-newest order.
+
+        The API returns at most 100 items per page. A long investigation can
+        exceed that limit, so treating the first page as the complete turn may
+        hide the latest assistant response or a late tool failure.
+        """
+
+        items: list[Any] = []
+        cursor: str | None = None
+        first_id: Any = None
+        seen_cursors: set[str] = set()
+        while True:
+            query: dict[str, str | int] = {"order": "asc", "limit": 100}
+            if cursor is not None:
+                query["after"] = cursor
+            page = self._request(
+                "GET",
+                f"/agents/sessions/{session_id}/items?{urllib.parse.urlencode(query)}",
+            )
+            page_items = page.get("data")
+            if not isinstance(page_items, list):
+                raise AgentApiError("list session items", None, "response data is not a list")
+            if first_id is None:
+                first_id = page.get("first_id")
+            items.extend(page_items)
+            if not page.get("has_more"):
+                return {
+                    **page,
+                    "data": items,
+                    "first_id": first_id,
+                    "last_id": page.get("last_id"),
+                    "has_more": False,
+                }
+            next_cursor = page.get("last_id")
+            if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors:
+                raise AgentApiError(
+                    "list session items",
+                    None,
+                    "pagination did not provide a new last_id cursor",
+                )
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+
+    def stream_events(
+        self,
+        session_id: str,
+        on_open: Callable[[], None] | None = None,
+        on_response: Callable[[Any | None], None] | None = None,
+    ) -> Iterator[tuple[str | None, Any]]:
         """Yield parsed SSE payloads while preserving the raw event name."""
 
         url = f"{self._base_url}/agents/sessions/{session_id}/events"
@@ -107,6 +160,7 @@ class AgentApiClient:
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "OpenAI-Beta": "agents=v1",
+                "OpenAI-Project": self._project_id,
                 "Accept": "text/event-stream",
                 "Cache-Control": "no-cache",
             },
@@ -118,6 +172,10 @@ class AgentApiClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
+                if on_response is not None:
+                    on_response(response)
+                if on_open is not None:
+                    on_open()
                 event_name: str | None = None
                 data_lines: list[str] = []
                 while True:
@@ -152,8 +210,10 @@ class AgentApiClient:
                         parsed = raw
                     yield event_name, parsed
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise AgentApiError("event stream", exc.code, detail) from exc
+            detail = redact(exc.read().decode("utf-8", errors="replace"))
+            raise AgentApiError("event stream", exc.code, str(detail)) from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise AgentApiError("event stream", None, str(exc)) from exc
-
+            raise AgentApiError("event stream", None, str(redact(str(exc)))) from exc
+        finally:
+            if on_response is not None:
+                on_response(None)

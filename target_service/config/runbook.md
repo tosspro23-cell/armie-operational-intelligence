@@ -16,6 +16,10 @@ liveness signal and is not sufficient evidence that the checkout path is ready.
 5. Test at least two explanations: an application/deployment regression and
    downstream pressure or availability.
 
+The controller may introduce `GET /diagnostics/timeline` as a fresh
+read-only control-plane observation during the second investigation turn. Do
+not treat that later observation as part of the initial incident request.
+
 ## Known operating expectations
 
 - The payment gateway simulator is normally available.
@@ -30,4 +34,3 @@ liveness signal and is not sufficient evidence that the checkout path is ready.
 Only the experiment controller may restore the known-safe configuration. A
 human must approve that fixed action before it runs. Afterward, verify health,
 checkout behavior, metrics, and new structured logs.
-

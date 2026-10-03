@@ -11,6 +11,7 @@ services:
       RUNBOOK_PATH: /app/runbook/runbook.md
       LOG_PATH: /app/shared/service.jsonl
       METRICS_PATH: /app/shared/metrics.json
+      RESET_RUNTIME_CONFIG: "${RESET_RUNTIME_CONFIG:-0}"
     ports:
       - "${TARGET_PORT:-18080}:8080"
     read_only: true
@@ -46,7 +47,7 @@ services:
 
 networks:
   spike:
-    name: armie-operational-intelligence-spike
+    name: armie-operational-intelligence-spike-live
 
 volumes:
   spike_runtime:
