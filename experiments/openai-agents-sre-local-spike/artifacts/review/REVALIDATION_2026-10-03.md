@@ -102,3 +102,15 @@ Controller target in the incident and payment regions.
 - The latest raw run shows no failed or cancelled top-level turn. It provides
   direct evidence for the lifecycle: approval → controlled mutation → new
   system evidence → same-Session verification.
+
+## Workbench Docker recheck — 2026-10-04
+
+- The first UI Reset attempt failed before a new Agent run because the
+  Controller inherited the rebuild default and Docker Hub returned an
+  authorization/network error resolving `python:3.12-slim`.
+- The launcher now defaults to `ARMIE_REUSE_LOCAL_IMAGES=1`, while an explicit
+  `ARMIE_REUSE_LOCAL_IMAGES=0` still requests a rebuild.
+- A browser-equivalent Reset after the fix reached `fault_ready` with target
+  health HTTP 200. The fixed Workbench checkout simulation returned HTTP 504
+  with `checkout_dependency_timeout`, and the target container remained
+  healthy. No new Agents API Session was created during this recheck.

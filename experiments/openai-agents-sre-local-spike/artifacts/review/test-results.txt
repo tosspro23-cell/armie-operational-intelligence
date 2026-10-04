@@ -41,6 +41,13 @@ executor reach/read/read-only-write-boundary: PASS
 fault reproducibility after target force-recreate: PASS
 approved remediation integration: PASS (explicit approval; target recreated with RESET_RUNTIME_CONFIG=0; checkout HTTP 200)
 
+Workbench Docker recheck:
+PASS; browser-equivalent Reset reused the local image, reached fault_ready,
+target health HTTP 200, and fixed checkout simulation HTTP 504 with
+checkout_dependency_timeout.
+The preceding rebuild attempt was blocked by Docker Hub image-resolution
+authorization/network failure for python:3.12-slim; no credential was recorded.
+
 Credential presence check (values not displayed):
 OPENAI_API_KEY=present
 OPENAI_EXECUTOR_API_KEY=present

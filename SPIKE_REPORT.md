@@ -273,6 +273,12 @@ Historical blockers and operational limitations:
 - Docker Desktop 29.8.0 on `aarch64` initially left containers in `Created`,
   then passed the busybox smoke test after recovery. A stale network/project
   ownership conflict was resolved by using a unique experiment network.
+- The Workbench launcher initially inherited the CLI default to rebuild images
+  during Reset. Docker Hub returned registry authorization/network errors while
+  resolving `python:3.12-slim`, so the Controller reported a Docker start
+  failure before any new Agent investigation could begin. The launcher now
+  defaults to `ARMIE_REUSE_LOCAL_IMAGES=1`; a browser-equivalent Reset was
+  re-run successfully without a registry request and reached `fault_ready`.
 - The host `Documents` worktree also became content-read-inaccessible to shell
   commands during this run. The implementation branch was prepared in a
   separate worktree from the exact `develop` commit to avoid overwriting the
@@ -296,6 +302,13 @@ container, with deterministic coverage. Final inspection nevertheless found
 the latest one-off executor still running until it was stopped by an explicit
 operator cleanup; end-to-end post-run executor cleanup remains a limitation,
 not a claimed live success.
+
+The later Workbench Docker recheck was separate from the paid Agents API run:
+the first browser Reset attempt failed while rebuilding `python:3.12-slim`;
+after the launcher defaulted to local-image reuse, Reset reached `fault_ready`,
+target health returned 200, and the fixed checkout simulation returned 504.
+This validates the local target readiness path but is not a new Agents API
+acceptance run.
 
 ## 17. Files Changed
 

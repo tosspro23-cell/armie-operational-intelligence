@@ -5,6 +5,11 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ui_dir="$repo_root/experiments/openai-agents-sre-local-spike/ui"
 venv_dir="${ARMIE_SRE_UI_VENV:-$repo_root/.ui-venv}"
 
+# The browser Workbench should be restartable without contacting Docker Hub.
+# It reuses the locally validated experiment images by default; operators can
+# set ARMIE_REUSE_LOCAL_IMAGES=0 when an explicit rebuild is required.
+export ARMIE_REUSE_LOCAL_IMAGES="${ARMIE_REUSE_LOCAL_IMAGES:-1}"
+
 if [[ ! -x "$venv_dir/bin/uvicorn" ]]; then
   echo "Missing UI Python environment: $venv_dir" >&2
   echo "Create it with: python3 -m venv .ui-venv && .ui-venv/bin/python -m pip install -r controller/requirements-ui.txt" >&2

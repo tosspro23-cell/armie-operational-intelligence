@@ -123,6 +123,10 @@ acceptance run. If Docker Hub is temporarily unavailable and the required
 experiment images are already present locally, set
 `ARMIE_REUSE_LOCAL_IMAGES=1` for that run to use Compose `--no-build`. This is
 an explicit local-runtime fallback; it does not alter the image definitions.
+The browser launcher applies this local-image fallback by default so that
+Workbench Reset and local validation do not unexpectedly depend on Docker Hub.
+Set `ARMIE_REUSE_LOCAL_IMAGES=0` before starting the launcher when an explicit
+image rebuild is required.
 
 The service writes structured logs and metrics to a Docker named volume shared
 read-only with the executor. The controller snapshots that volume to
