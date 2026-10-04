@@ -563,11 +563,14 @@ class LocalConsole:
                 )
                 self.state["target"]["last_checkout"] = incident_checkout
                 self.state["target"]["incident_checkout"] = incident_checkout
-                self.state["phase"] = "approval_required"
-                self.state["proposal"] = self._proposal()
+                # Local validation is evidence-only. It must not create an
+                # approval request or block the separate Agents API start
+                # control; only a real Agent Session may produce a proposal.
+                self.state["phase"] = "fault_ready"
+                self.state["proposal"] = None
             self.emit("incident.reproduced", {"checkout_status": 504})
             self.emit("contradictory.evidence.available", timeline)
-            self.emit("approval.required", self.snapshot()["proposal"])
+            self.emit("local.validation.completed", {"checkout_status": 504, "read_only": True})
         except Exception as exc:
             safe_error = str(redact(str(exc)))
             self.set_state(phase="failed", error=safe_error)

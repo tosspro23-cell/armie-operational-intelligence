@@ -146,6 +146,7 @@ const eventTypes = [
   "executor.boundary.verified",
   "incident.reproduced",
   "contradictory.evidence.available",
+  "local.validation.completed",
   "approval.required",
   "approval.recorded",
   "remediation.denied",
@@ -660,9 +661,9 @@ export default function App() {
             </div>
           </section> : null}
 
-          {!liveRun ? <section className={`panel approval-panel ${state.proposal ? "attention" : ""}`}>
+          {!liveRun && state.proposal ? <section className="panel approval-panel attention">
             <div className="panel-header"><div><div className="section-kicker">CONTROLLED CHANGE</div><h3>Approval boundary</h3></div><span className="provenance-chip controller">controller</span></div>
-            {!state.proposal ? <div className="empty-state">The proposal will appear only after the deterministic incident has been reproduced.</div> : <>
+            <>
               <div className="proposal-tag">PROPOSAL · {state.proposal.source}</div>
               <h4>{state.proposal.title}</h4>
               <p className="proposal-scope">Scope: {state.proposal.scope}</p>
@@ -671,7 +672,7 @@ export default function App() {
               <div className="rollback"><span>Rollback</span><p>{state.proposal.rollback_plan}</p></div>
               {state.approval ? <div className={`decision-box ${state.approval.approved ? "approved" : "denied"}`}><strong>{state.approval.approved ? "Approved" : "Denied"}</strong><span>{state.approval.approved ? "Remediation is running or was applied." : "No remediation was executed."}</span></div> : <div className="approval-actions"><button className="danger-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/approval", { decision: "deny", proposal_id: state.proposal!.id }), false)}>Deny</button><button className="approve-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/approval", { decision: "approve", proposal_id: state.proposal!.id }), false)}>Approve remediation</button></div>}
               <small className="approval-default">Default: deny. No mutation occurs without an explicit approval request.</small>
-            </>}
+            </>
           </section> : null}
 
           {!liveRun ? <section className="panel verification-panel">

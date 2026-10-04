@@ -78,3 +78,14 @@ PASS; Workbench approval is recorded as explicit_workbench_browser_approval.
 2026-10-03 Workbench browser verification:
 PASS; current target shows Fault ready / HTTP 504 after Reset.
 PASS; prior completed Session remains separately labelled retained evidence.
+
+2026-10-04 Workbench trigger-separation regression:
+PASS; local validation completed at fault_ready with target health HTTP 200 and
+eight HTTP 504 checkout timeouts.
+PASS; local validation emitted incident.reproduced,
+contradictory.evidence.available, and local.validation.completed, with no
+approval.required event and no proposal or approval state.
+PASS; purple Start another investigation control remained available and still
+requires an explicit operator click before a real Agents API Session starts.
+PASS; deterministic suite now reports 40 passing tests (one Docker integration
+test skipped by default).

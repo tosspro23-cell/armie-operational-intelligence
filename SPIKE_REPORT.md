@@ -28,6 +28,15 @@ available without another terminal command. Local actions hide any historical
 live-run view so old recovery evidence cannot be mistaken for the current
 faulted target.
 
+The Workbench trigger boundary was rechecked on 2026-10-04 after a UI report
+that local validation disabled the purple Agent API control and displayed an
+approval request automatically. The cause was a controller-only validation
+path incorrectly setting `approval_required` and creating its demo proposal.
+Local validation now remains evidence-only: it finishes in `fault_ready`,
+emits `local.validation.completed`, and leaves `proposal` and `approval`
+empty. Only the manually invoked real Agents API path may create a Session or
+an Agent-generated approval request.
+
 ## 1. Experiment Objective
 
 Evaluate a real OpenAI Managed Agents API session, created from the saved SRE
@@ -248,6 +257,15 @@ verification showed `Fault ready` and HTTP 504 alongside separately labelled
 retained Session evidence.
 
 ## 16. Failures and Limitations
+
+The 2026-10-04 Workbench regression was corrected before this report update.
+The local validation path had been conflating deterministic evidence capture
+with the separate live-Agent approval lifecycle. This caused a false local
+approval state and disabled the real-Agent start button; it did not create an
+Agents API Session or execute a mutation. A regression test and a browser/API
+recheck now confirm that local validation produces the real HTTP 504 evidence,
+returns to `fault_ready`, emits no `approval.required` event, and leaves the
+manual Agent API start control available.
 
 The implementation audit found that the prior controller incorrectly reused
 `OPENAI_API_KEY` as the executor credential. That is corrected: the host

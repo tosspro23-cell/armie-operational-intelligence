@@ -63,7 +63,8 @@ capabilities. It can run either of two deliberately separate modes:
 
 - **Start local validation** runs the deterministic controller-only proof. It
   is useful for demonstrating the payment symptom and read-only evidence
-  boundary without API usage.
+  boundary without API usage. It is evidence-only and never creates an Agent
+  proposal or approval request.
 - **Start Agents API investigation** starts one real Session from the saved SRE
   Agent, connects the self-hosted executor in Docker, streams observable
   session evidence, pauses at the human approval gate, and continues the same

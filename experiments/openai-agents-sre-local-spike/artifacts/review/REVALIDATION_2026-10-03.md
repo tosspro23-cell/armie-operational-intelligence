@@ -103,6 +103,26 @@ Controller target in the incident and payment regions.
   direct evidence for the lifecycle: approval → controlled mutation → new
   system evidence → same-Session verification.
 
+## Workbench trigger separation recheck — 2026-10-04
+
+- The reported behavior was reproduced from the controller state: local
+  validation had incorrectly entered `approval_required` and created a
+  `controller_demo` proposal, which disabled the separate purple Agent API
+  start button. No Agents API Session was created by that local path.
+- The controller/UI fix makes local validation evidence-only. Its completed
+  run `20261004T140554Z` reached `fault_ready`, kept target health at HTTP 200,
+  reproduced eight HTTP 504 checkout timeouts, and left `proposal=null` and
+  `approval=null`.
+- The captured local event sequence included `incident.reproduced`,
+  `contradictory.evidence.available`, and `local.validation.completed`; it did
+  not include `approval.required`.
+- Browser accessibility verification showed the purple action available as
+  `Start another investigation`. A real Agents API investigation still
+  requires the operator to click that action; approval is shown only after the
+  real Session reaches its approval-pending state.
+- Deterministic regression coverage now includes
+  `test_local_validation_is_evidence_only_and_does_not_request_approval`.
+
 ## Workbench Docker recheck — 2026-10-04
 
 - The first UI Reset attempt failed before a new Agent run because the
