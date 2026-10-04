@@ -89,3 +89,11 @@ PASS; purple Start another investigation control remained available and still
 requires an explicit operator click before a real Agents API Session starts.
 PASS; deterministic suite now reports 40 passing tests (one Docker integration
 test skipped by default).
+
+2026-10-04 post-remediation state preservation regression:
+PASS; local validation now reuses the current target with RESET_RUNTIME_CONFIG=0
+and does not call the fault-fixture preparation path.
+PASS; healthy current-target validation remains target_healthy with HTTP 200;
+only explicit Reset fault reloads the HTTP 504 fixture.
+PASS; deterministic suite now reports 42 passing tests (one Docker integration
+test skipped by default).

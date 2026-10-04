@@ -22,11 +22,13 @@ in the ignored runtime history for comparison.
 The Workbench control surface is grouped into an Incident Workspace for the
 synthetic payment service and a purple Agents API Control Room for Session
 start, observable turns, approval, event stream, and same-session recovery.
-Reset fault is now a separate preparation action: it recreates the deterministic
-fault and leaves the local target in `fault_ready`, making a new Agents API run
-available without another terminal command. Local actions hide any historical
-live-run view so old recovery evidence cannot be mistaken for the current
-faulted target.
+Reset fault is now the only action that recreates the deterministic fault and
+leaves the local target in `fault_ready`, making a new Agents API run available
+without another terminal command. Start local validation observes the current
+target without replacing its runtime configuration, so a post-remediation
+HTTP 200 remains healthy until Reset fault is explicitly selected. Local
+actions hide any historical live-run view so old recovery evidence cannot be
+mistaken for the current target.
 
 The Workbench trigger boundary was rechecked on 2026-10-04 after a UI report
 that local validation disabled the purple Agent API control and displayed an
@@ -35,7 +37,9 @@ path incorrectly setting `approval_required` and creating its demo proposal.
 Local validation now remains evidence-only: it finishes in `fault_ready`,
 emits `local.validation.completed`, and leaves `proposal` and `approval`
 empty. Only the manually invoked real Agents API path may create a Session or
-an Agent-generated approval request.
+an Agent-generated approval request. The follow-up lifecycle check also
+confirmed that local validation preserves a healthy post-remediation target;
+only Reset fault returns it to the fault fixture.
 
 ## 1. Experiment Objective
 
@@ -193,7 +197,11 @@ post-remediation verification all use the same Session ID and the same
 environment ID. The controller retrieved the Session again before continuing
 and refused to proceed if the returned ID differed. After the original CLI
 process ended, the resume path reattached the already-running executor instead
-of creating a new environment or Session.
+of creating a new environment or Session. Once the final verification turn
+completes, the executor connection is cleaned up and the Workbench marks the
+Session as retained completed evidence; the Session history remains available,
+but it is no longer an active investigation. This normal completion does not
+imply that the synthetic target should be reset.
 
 ## 12. Managed Harness Responsibilities
 
@@ -258,14 +266,18 @@ retained Session evidence.
 
 ## 16. Failures and Limitations
 
-The 2026-10-04 Workbench regression was corrected before this report update.
+The 2026-10-04 Workbench regressions were corrected before this report update.
 The local validation path had been conflating deterministic evidence capture
 with the separate live-Agent approval lifecycle. This caused a false local
 approval state and disabled the real-Agent start button; it did not create an
 Agents API Session or execute a mutation. A regression test and a browser/API
 recheck now confirm that local validation produces the real HTTP 504 evidence,
 returns to `fault_ready`, emits no `approval.required` event, and leaves the
-manual Agent API start control available.
+manual Agent API start control available. A second lifecycle regression was
+also corrected: local validation no longer calls the fault-fixture reset path.
+When the target is healthy after remediation, local validation records the
+HTTP 200 state and leaves it healthy; only the explicit Reset fault action
+reintroduces the HTTP 504 incident.
 
 The implementation audit found that the prior controller incorrectly reused
 `OPENAI_API_KEY` as the executor credential. That is corrected: the host

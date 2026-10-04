@@ -441,7 +441,7 @@ class LocalConsole:
         self._begin_run()
         try:
             prepare_runtime()
-            compose_up(force_recreate=True)
+            compose_up(force_recreate=True, reset_runtime_config=True)
             health = wait_for_health()
             metrics = request_json("/metrics")
             downstream = request_json("/diagnostics/downstream")
@@ -539,8 +539,10 @@ class LocalConsole:
     def _run_local(self) -> None:
         self._begin_run()
         try:
-            prepare_runtime()
-            compose_up(force_recreate=True)
+            # Local validation observes the current target state. It must not
+            # reset a recovered target; only Reset fault intentionally loads
+            # the deterministic incident fixture.
+            compose_up(force_recreate=False, reset_runtime_config=False)
             health = wait_for_health()
             with self.lock:
                 self.state["target"]["health"] = health
@@ -563,14 +565,30 @@ class LocalConsole:
                 )
                 self.state["target"]["last_checkout"] = incident_checkout
                 self.state["target"]["incident_checkout"] = incident_checkout
+                checkout_status = incident_checkout.get("status") if incident_checkout else None
                 # Local validation is evidence-only. It must not create an
                 # approval request or block the separate Agents API start
                 # control; only a real Agent Session may produce a proposal.
-                self.state["phase"] = "fault_ready"
+                self.state["phase"] = (
+                    "fault_ready"
+                    if checkout_status == 504
+                    else "target_healthy"
+                    if checkout_status == 200
+                    else "validation_complete"
+                )
                 self.state["proposal"] = None
-            self.emit("incident.reproduced", {"checkout_status": 504})
-            self.emit("contradictory.evidence.available", timeline)
-            self.emit("local.validation.completed", {"checkout_status": 504, "read_only": True})
+            checkout_status = incident_checkout.get("status") if incident_checkout else None
+            if checkout_status == 504:
+                self.emit("incident.reproduced", {"checkout_status": 504})
+                self.emit("contradictory.evidence.available", timeline)
+            self.emit(
+                "local.validation.completed",
+                {
+                    "checkout_status": checkout_status,
+                    "read_only": True,
+                    "target_state": "fault" if checkout_status == 504 else "healthy" if checkout_status == 200 else "unknown",
+                },
+            )
         except Exception as exc:
             safe_error = str(redact(str(exc)))
             self.set_state(phase="failed", error=safe_error)

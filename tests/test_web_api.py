@@ -44,7 +44,7 @@ class WebConsoleContractTests(unittest.TestCase):
         self.assertEqual(snapshot["target"]["health"]["status"], 200)
         self.assertIsNone(snapshot["target"]["last_checkout"])
         prepare_runtime.assert_called_once()
-        compose_up.assert_called_once_with(force_recreate=True)
+        compose_up.assert_called_once_with(force_recreate=True, reset_runtime_config=True)
         wait_for_health.assert_called_once()
 
     @patch("controller.web_api.write_probe_artifact")
@@ -94,13 +94,65 @@ class WebConsoleContractTests(unittest.TestCase):
         self.assertEqual(snapshot["target"]["last_checkout"]["status"], 504)
         self.assertNotIn("approval.required", [event["type"] for event in console.event_snapshot()])
         self.assertIn("local.validation.completed", [event["type"] for event in console.event_snapshot()])
-        prepare_runtime.assert_called_once()
-        compose_up.assert_called_once_with(force_recreate=True)
+        prepare_runtime.assert_not_called()
+        compose_up.assert_called_once_with(force_recreate=False, reset_runtime_config=False)
         wait_for_health.assert_called_once()
         validate_executor_boundary.assert_called_once_with(capture)
         probe_incident.assert_called_once_with(capture)
         snapshot_runtime.assert_called_once_with(run_dir)
         write_probe_artifact.assert_called_once_with(run_dir, probe_incident.return_value)
+
+    @patch("controller.web_api.write_probe_artifact")
+    @patch("controller.web_api.snapshot_runtime")
+    @patch("controller.web_api.validate_executor_boundary")
+    @patch("controller.web_api.probe_incident", return_value=[
+        {
+            "label": "checkout_1",
+            "status": 200,
+            "body": {"outcome": "authorized"},
+        }
+    ])
+    @patch("controller.web_api.request_json")
+    @patch("controller.web_api.wait_for_health", return_value={"status": 200, "body": {"status": "ok"}})
+    @patch("controller.web_api.compose_up")
+    @patch("controller.web_api.prepare_runtime")
+    def test_local_validation_preserves_healthy_target_without_reintroducing_fault(
+        self,
+        prepare_runtime,
+        compose_up,
+        wait_for_health,
+        request_json,
+        probe_incident,
+        validate_executor_boundary,
+        snapshot_runtime,
+        write_probe_artifact,
+    ) -> None:
+        request_json.side_effect = [
+            {"status": 200, "body": {"incident_window": "synthetic"}},
+            {"status": 200, "body": {"checkout_successes": 1, "checkout_timeouts": 0}},
+            {"status": 200, "body": {"timeout_budget_ms": 300}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / "healthy-run"
+            run_dir.mkdir(parents=True)
+            capture = EventCapture(run_dir)
+            console = LocalConsole()
+            with patch("controller.web_api.new_run", return_value=(run_dir, capture)):
+                console.start_local()
+                self.assertIsNotNone(console.worker)
+                console.worker.join(timeout=1)  # type: ignore[union-attr]
+
+        snapshot = console.snapshot()
+        self.assertEqual(snapshot["phase"], "target_healthy")
+        self.assertEqual(snapshot["target"]["last_checkout"]["status"], 200)
+        self.assertIsNone(snapshot["proposal"])
+        self.assertIsNone(snapshot["approval"])
+        event_types = [event["type"] for event in console.event_snapshot()]
+        self.assertNotIn("incident.reproduced", event_types)
+        self.assertNotIn("approval.required", event_types)
+        self.assertIn("local.validation.completed", event_types)
+        prepare_runtime.assert_not_called()
+        compose_up.assert_called_once_with(force_recreate=False, reset_runtime_config=False)
 
     def test_browser_live_start_requires_credentials_and_launches_one_run(self) -> None:
         import os

@@ -46,7 +46,7 @@ def prepare_runtime() -> None:
     print(f"prepared {(config.RUNTIME_ROOT / 'runtime_config.json').relative_to(config.REPO_ROOT)}")
 
 
-def compose_up(force_recreate: bool = False) -> None:
+def compose_up(force_recreate: bool = False, reset_runtime_config: bool = True) -> None:
     command = [
         "docker",
         "compose",
@@ -64,7 +64,7 @@ def compose_up(force_recreate: bool = False) -> None:
     command.append("target")
     try:
         child_env = dict(os.environ)
-        child_env["RESET_RUNTIME_CONFIG"] = "1"
+        child_env["RESET_RUNTIME_CONFIG"] = "1" if reset_runtime_config else "0"
         result = subprocess.run(
             command,
             cwd=config.REPO_ROOT,

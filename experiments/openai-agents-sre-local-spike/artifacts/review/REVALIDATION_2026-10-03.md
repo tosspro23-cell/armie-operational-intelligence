@@ -122,6 +122,14 @@ Controller target in the incident and payment regions.
   real Session reaches its approval-pending state.
 - Deterministic regression coverage now includes
   `test_local_validation_is_evidence_only_and_does_not_request_approval`.
+- A second lifecycle regression was identified: local validation still
+  reloaded the fault fixture after a successful remediation. It now starts or
+  reuses the target with `RESET_RUNTIME_CONFIG=0` and observes the current
+  checkout result. A healthy HTTP 200 remains healthy; only explicit Reset
+  fault reloads the deterministic HTTP 504 fixture.
+- New deterministic coverage includes
+  `test_local_validation_preserves_healthy_target_without_reintroducing_fault`
+  and `test_compose_can_preserve_current_runtime_config`.
 
 ## Workbench Docker recheck — 2026-10-04
 

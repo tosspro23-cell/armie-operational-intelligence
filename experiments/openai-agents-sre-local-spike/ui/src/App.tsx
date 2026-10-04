@@ -129,6 +129,8 @@ const phaseLabels: Record<string, string> = {
   idle: "Idle",
   target_starting: "Starting target",
   fault_ready: "Fault ready",
+  target_healthy: "Target healthy",
+  validation_complete: "Validation complete",
   approval_required: "Approval required",
   approval_denied: "Approval denied",
   remediation_running: "Applying remediation",
@@ -213,6 +215,7 @@ function phaseClass(phase: string): string {
   if (phase === "verification_complete") return "success";
   if (phase === "failed" || phase === "verification_failed") return "danger";
   if (phase === "fault_ready" || phase === "approval_required" || phase === "remediation_running" || phase === "verification_running") return "warning";
+  if (phase === "target_healthy" || phase === "verification_complete") return "success";
   return "neutral";
 }
 
@@ -508,7 +511,7 @@ export default function App() {
           <button className="agent-button" disabled={!canStartLiveInvestigation} onClick={startLiveInvestigation}>
             <span>◎</span> {liveRun?.status === "completed" ? "Start another investigation" : "Start Agents API investigation"}
           </button>
-          <div className="agent-footnote"><span className="provenance-chip agent">{liveRunActive ? "live session evidence" : historicalLiveRun ? "retained session evidence" : "ready after fault reset"}</span><small>{targetReadyForAgent ? "Current target is ready for a real investigation." : "Reset the fault before starting a new Session."}</small></div>
+          <div className="agent-footnote"><span className="provenance-chip agent">{liveRunActive ? "live session evidence" : historicalLiveRun ? "retained session evidence" : state.phase === "target_healthy" ? "healthy target" : "ready after fault reset"}</span><small>{targetReadyForAgent ? "Current target is ready for a real investigation." : state.phase === "target_healthy" ? "Target is healthy. Reset the fault before starting a new investigation." : "Reset the fault before starting a new Session."}</small></div>
         </div>
 
       {liveRun ? <section className="panel live-run-panel">
@@ -598,7 +601,7 @@ export default function App() {
               </div>
               <div className="payment-explanation">
                 <div className="section-kicker">BUSINESS SYMPTOM</div>
-                {checkoutFailed ? <div className="payment-alert failure"><div className="payment-alert-icon">!</div><div><strong>Payment could not be completed</strong><p>The checkout service timed out while contacting its simulated payment dependency.</p></div></div> : effectiveCheckoutStatus === "200" ? <div className="payment-alert success"><div className="payment-alert-icon">✓</div><div><strong>Payment completed</strong><p>The latest synthetic checkout returned a successful response.</p></div></div> : <div className="payment-alert waiting"><div className="payment-alert-icon">…</div><div><strong>Payment surface is waiting</strong><p>Reset the fault or start local validation to exercise the customer-facing checkout flow.</p></div></div>}
+                {checkoutFailed ? <div className="payment-alert failure"><div className="payment-alert-icon">!</div><div><strong>Payment could not be completed</strong><p>The checkout service timed out while contacting its simulated payment dependency.</p></div></div> : effectiveCheckoutStatus === "200" ? <div className="payment-alert success"><div className="payment-alert-icon">✓</div><div><strong>Payment completed</strong><p>The latest synthetic checkout returned a successful response.</p></div></div> : <div className="payment-alert waiting"><div className="payment-alert-icon">…</div><div><strong>Payment surface is waiting</strong><p>Reset the fault to reintroduce the incident, or run local validation to observe the current target.</p></div></div>}
                 {checkoutFailed ? <div className="payment-technical"><div><span>Customer-visible result</span><strong>Payment failed</strong></div><div><span>Technical status</span><strong>HTTP {effectiveCheckoutStatus}</strong></div><div><span>Incident code</span><strong>{stringOf(effectiveCheckout.error_code)}</strong></div><button className="link-button" onClick={() => setPaymentDetailsOpen(true)}>View technical error details ↗</button></div> : null}
                 {effectiveCheckoutStatus === "200" ? <div className="payment-technical"><div><span>Customer-visible result</span><strong>Payment confirmed</strong></div><div><span>Technical status</span><strong>HTTP 200</strong></div><div><span>Evidence</span><strong>new checkout response</strong></div></div> : null}
               </div>

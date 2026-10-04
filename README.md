@@ -63,8 +63,10 @@ capabilities. It can run either of two deliberately separate modes:
 
 - **Start local validation** runs the deterministic controller-only proof. It
   is useful for demonstrating the payment symptom and read-only evidence
-  boundary without API usage. It is evidence-only and never creates an Agent
-  proposal or approval request.
+  boundary without API usage. It observes the target's current state; it does
+  not reset a recovered target, create an Agent proposal, or create an approval
+  request. Use **Reset fault** when you intentionally want to reintroduce the
+  deterministic incident.
 - **Start Agents API investigation** starts one real Session from the saved SRE
   Agent, connects the self-hosted executor in Docker, streams observable
   session evidence, pauses at the human approval gate, and continues the same

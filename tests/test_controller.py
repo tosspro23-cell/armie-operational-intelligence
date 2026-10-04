@@ -89,6 +89,13 @@ class ControllerTests(unittest.TestCase):
         self.assertIn("--no-build", command)
         self.assertNotIn("--build", command)
 
+    def test_compose_can_preserve_current_runtime_config(self) -> None:
+        result = subprocess.CompletedProcess([], 0)
+        with patch.dict("os.environ", {"ARMIE_REUSE_LOCAL_IMAGES": "1"}, clear=False):
+            with patch("controller.cli.subprocess.run", return_value=result) as run:
+                compose_up(reset_runtime_config=False)
+        self.assertEqual(run.call_args.kwargs["env"]["RESET_RUNTIME_CONFIG"], "0")
+
     def test_openai_key_validation_uses_only_named_variable(self) -> None:
         with self.assertRaises(RuntimeError):
             require_openai_api_key({})

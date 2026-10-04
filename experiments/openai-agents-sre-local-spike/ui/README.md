@@ -34,9 +34,10 @@ npm --prefix experiments/openai-agents-sre-local-spike/ui run dev -- --host 127.
 
 Open <http://127.0.0.1:5173> and choose either mode:
 
-- **Start local validation** rebuilds the deterministic fault fixture and
-  demonstrates local evidence only. It does not create an Agent proposal or
-  expose an approval action.
+- **Start local validation** observes the target's current state and
+  demonstrates local evidence only. It does not reset a recovered target,
+  create an Agent proposal, or expose an approval action. Use **Reset fault**
+  to intentionally reintroduce the deterministic incident.
 - **Start Agents API investigation** creates one real saved-agent Session,
   connects the Docker self-hosted executor, displays the observable
   investigation turns, and pauses for approval before the allowlisted
