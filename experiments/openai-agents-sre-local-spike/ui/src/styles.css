@@ -49,6 +49,23 @@ h4 { margin: 14px 0 7px; font-size: 15px; line-height: 1.4; }
 .provenance-chip.controller { color: #ffd28a; background: rgba(245, 189, 99, .12); }
 .provenance-chip.agent { color: #d0b2ff; background: rgba(177, 133, 255, .12); }
 .error-banner { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; padding: 12px 14px; border: 1px solid rgba(241, 118, 131, .35); border-radius: 10px; color: #ffd1d6; background: rgba(142, 38, 55, .22); font-size: 12px; }
+.workbench-columns { display: grid; grid-template-columns: minmax(0, .98fr) minmax(430px, 1.02fr); grid-template-areas: "application-heading agent-heading" "hero agent" "metrics agent" "payment agent"; gap: 14px 18px; align-items: start; }
+.workspace-column-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; padding: 4px 8px 3px; }
+.workspace-column-heading h3 { margin-top: 5px; color: #e7f2ff; font-size: 15px; }
+.application-heading { grid-area: application-heading; }
+.agent-heading { grid-area: agent-heading; padding-left: 16px; }
+.agent-heading .section-kicker { color: #b79af2; }
+.workbench-columns > .hero-grid { grid-area: hero; display: block; margin: 0; }
+.workbench-columns > .metric-grid { grid-area: metrics; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.workbench-columns > .agent-control-room { grid-area: agent; align-self: start; position: sticky; top: 18px; margin: 0; }
+.workbench-columns > .agent-control-room > .agent-card { display: block; }
+.workbench-columns > .agent-control-room > .agent-card .agent-message { margin-top: 18px; }
+.workbench-columns > .agent-control-room > .agent-card .agent-button { display: block; margin-top: 18px; }
+.workbench-columns > .agent-control-room > .agent-card .agent-footnote { margin-top: 14px; }
+.workbench-columns > .incident-detail-region { grid-area: payment; margin: 0; }
+.workbench-columns > .incident-detail-region .content-grid { grid-template-columns: 1fr; }
+.workbench-columns > .agent-control-room > .agent-secondary { display: grid; gap: 16px; margin-top: 16px; }
+.workbench-columns > .agent-control-room > .agent-secondary .panel { border-color: rgba(202, 174, 255, .22); background: rgba(8, 15, 35, .32); }
 .hero-grid, .content-grid { display: grid; gap: 16px; }
 .hero-grid { grid-template-columns: minmax(0, 1.6fr) minmax(280px, .75fr); }
 .hero-card, .agent-card, .panel { border: 1px solid var(--line); background: linear-gradient(145deg, rgba(16, 31, 51, .98), rgba(10, 23, 39, .98)); border-radius: 15px; box-shadow: 0 18px 50px rgba(0,0,0,.18); }
@@ -239,5 +256,6 @@ button:not(:disabled):hover { transform: translateY(-1px); }
 .modal-footnote { display: flex; gap: 10px; align-items: center; margin-top: 14px; color: #849db7; font-size: 10px; line-height: 1.4; }
 .footer { justify-content: space-between; gap: 15px; margin-top: 22px; padding-top: 17px; border-top: 1px solid rgba(141,171,207,.14); color: #7188a4; font-size: 10px; }
 
+@media (max-width: 1120px) { .workbench-columns { grid-template-columns: 1fr; grid-template-areas: "application-heading" "hero" "metrics" "payment" "agent-heading" "agent"; } .workbench-columns > .agent-control-room { position: static; } .workbench-columns > .agent-control-room > .agent-card { display: grid; } .workbench-columns > .agent-control-room > .agent-card .agent-button { margin-top: 0; } }
 @media (max-width: 1050px) { .content-grid { grid-template-columns: 1fr; } .side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
-@media (max-width: 760px) { .app-shell { width: min(100% - 24px, 600px); padding-top: 16px; } .topbar, .notice-bar, .hero-title-row, .footer, .region-header { align-items: flex-start; flex-direction: column; } .topbar-meta { align-items: flex-start; gap: 8px; margin-top: 12px; } .hero-grid, .metric-grid, .metric-cards, .side-column, .payment-layout, .live-run-meta, .live-run-grid { grid-template-columns: 1fr; } .agent-control-room > .agent-card { grid-template-columns: 1fr; } .agent-control-room > .agent-card .agent-button, .agent-control-room > .agent-card .agent-message { grid-column: 1; grid-row: auto; } .hero-card, .agent-card, .panel { padding: 16px; } .metric-cards { gap: 7px; } .fact-row { align-items: flex-start; flex-direction: column; gap: 8px; } .approval-actions { grid-template-columns: 1fr; } .footer { gap: 8px; } .modal-backdrop { padding: 12px; } .details-modal { padding: 16px; } .modal-footnote { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 760px) { .app-shell { width: min(100% - 24px, 600px); padding-top: 16px; } .topbar, .notice-bar, .hero-title-row, .footer, .region-header, .workspace-column-heading { align-items: flex-start; flex-direction: column; } .topbar-meta { align-items: flex-start; gap: 8px; margin-top: 12px; } .hero-grid, .metric-grid, .metric-cards, .side-column, .payment-layout, .live-run-meta, .live-run-grid { grid-template-columns: 1fr; } .agent-control-room > .agent-card { grid-template-columns: 1fr; } .agent-control-room > .agent-card .agent-button, .agent-control-room > .agent-card .agent-message { grid-column: 1; grid-row: auto; } .hero-card, .agent-card, .panel { padding: 16px; } .metric-cards { gap: 7px; } .fact-row { align-items: flex-start; flex-direction: column; gap: 8px; } .approval-actions { grid-template-columns: 1fr; } .footer { gap: 8px; } .modal-backdrop { padding: 12px; } .details-modal { padding: 16px; } .modal-footnote { align-items: flex-start; flex-direction: column; } }

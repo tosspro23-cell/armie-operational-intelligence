@@ -459,6 +459,15 @@ export default function App() {
 
       {backendError ? <div className="error-banner"><strong>Controller notice</strong><span>{backendError}</span></div> : null}
 
+      <section className="workbench-columns">
+      <div className="workspace-column-heading application-heading">
+        <div>
+          <div className="section-kicker">APPLICATION / PAYMENT API</div>
+          <h3>Target service and incident evidence</h3>
+        </div>
+        <span className="provenance-chip observed">local target</span>
+      </div>
+
       <section className="hero-grid">
         <div className="hero-card">
           <div className="section-kicker">INCIDENT WORKSPACE</div>
@@ -493,6 +502,14 @@ export default function App() {
         <StatusPill label="Evidence boundary" value={state.phase === "idle" ? "Not checked" : "Read-only verified"} tone={state.phase !== "idle" ? "success" : "neutral"} />
         <StatusPill label="Approval" value={state.approval ? stringOf(state.approval.decision) : state.proposal ? "Required" : "Not required"} tone={state.approval?.approved ? "success" : state.proposal ? "warning" : "neutral"} />
       </section>
+
+      <div className="workspace-column-heading agent-heading">
+        <div>
+          <div className="section-kicker">AGENT / OPENAI AGENTS API</div>
+          <h3>Investigation, approval, and recheck</h3>
+        </div>
+        <span className="provenance-chip agent">managed session</span>
+      </div>
 
       <section className={`agent-control-room ${liveRun ? "has-live-run" : ""}`}>
         <div className="agent-card">
@@ -564,6 +581,36 @@ export default function App() {
           </div>
         </div>
       </section> : null}
+
+      {!liveRun ? <aside className="side-column agent-secondary">
+        {!liveRun ? <section className="panel trace-panel">
+          <div className="panel-header"><div><div className="section-kicker">CONTROLLER EVENT STREAM</div><h3>Controller events</h3></div><span className="live-indicator"><span className="dot" /> SSE</span></div>
+          <p className="panel-description">This stream is controller telemetry. When a real Agent Session is connected, Agent-returned items appear in the live run above with separate provenance.</p>
+          <div className="event-list">
+            {latestEvents.length === 0 ? <div className="empty-state">Waiting for lifecycle events.</div> : latestEvents.map((event) => <div className="event-row" key={event.id}><span className="event-number">{String(event.id).padStart(2, "0")}</span><div><strong>{event.type}</strong><small>{formatTime(event.captured_at)}</small></div></div>)}
+          </div>
+        </section> : null}
+
+        {!liveRun && state.proposal ? <section className="panel approval-panel attention">
+          <div className="panel-header"><div><div className="section-kicker">CONTROLLED CHANGE</div><h3>Approval boundary</h3></div><span className="provenance-chip controller">controller</span></div>
+          <>
+            <div className="proposal-tag">PROPOSAL · {state.proposal.source}</div>
+            <h4>{state.proposal.title}</h4>
+            <p className="proposal-scope">Scope: {state.proposal.scope}</p>
+            <div className="proposal-section"><span>Risks</span><ul>{state.proposal.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul></div>
+            <div className="proposal-section"><span>Verification plan</span><ol>{state.proposal.verification_plan.map((step) => <li key={step}>{step}</li>)}</ol></div>
+            <div className="rollback"><span>Rollback</span><p>{state.proposal.rollback_plan}</p></div>
+            {state.approval ? <div className={`decision-box ${state.approval.approved ? "approved" : "denied"}`}><strong>{state.approval.approved ? "Approved" : "Denied"}</strong><span>{state.approval.approved ? "Remediation is running or was applied." : "No remediation was executed."}</span></div> : <div className="approval-actions"><button className="danger-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/approval", { decision: "deny", proposal_id: state.proposal!.id }), false)}>Deny</button><button className="approve-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/approval", { decision: "approve", proposal_id: state.proposal!.id }), false)}>Approve remediation</button></div>}
+            <small className="approval-default">Default: deny. No mutation occurs without an explicit approval request.</small>
+          </>
+        </section> : null}
+
+        {!liveRun ? <section className="panel verification-panel">
+          <div className="panel-header"><div><div className="section-kicker">RECOVERY</div><h3>Before / after</h3></div><span className="provenance-chip observed">new evidence</span></div>
+          <div className="comparison"><div><span>Before</span><strong>{incidentCheckoutStatus === "—" ? "—" : `HTTP ${incidentCheckoutStatus}`}</strong><small>{stringOf(incidentCheckout.error_code, "Awaiting fault probe")}</small></div><div className="comparison-arrow">→</div><div><span>After</span><strong>{verification ? `HTTP ${statusOf(verification.checkout)}` : "—"}</strong><small>{verification?.verified ? "verified by new checkout" : "awaiting approved remediation"}</small></div></div>
+          {state.error ? <div className="error-inline">{state.error}</div> : null}
+        </section> : null}
+      </aside> : null}
 
       </section>
 
@@ -655,36 +702,9 @@ export default function App() {
           </section>
         </div>
 
-        {!liveRun ? <aside className="side-column">
-          {!liveRun ? <section className="panel trace-panel">
-            <div className="panel-header"><div><div className="section-kicker">EXECUTION TRACE</div><h3>Controller events</h3></div><span className="live-indicator"><span className="dot" /> SSE</span></div>
-            <p className="panel-description">This stream is live controller telemetry. When the real Agent session is connected, Agent-returned items will appear here with separate provenance.</p>
-            <div className="event-list">
-              {latestEvents.length === 0 ? <div className="empty-state">Waiting for lifecycle events.</div> : latestEvents.map((event) => <div className="event-row" key={event.id}><span className="event-number">{String(event.id).padStart(2, "0")}</span><div><strong>{event.type}</strong><small>{formatTime(event.captured_at)}</small></div></div>)}
-            </div>
-          </section> : null}
-
-          {!liveRun && state.proposal ? <section className="panel approval-panel attention">
-            <div className="panel-header"><div><div className="section-kicker">CONTROLLED CHANGE</div><h3>Approval boundary</h3></div><span className="provenance-chip controller">controller</span></div>
-            <>
-              <div className="proposal-tag">PROPOSAL · {state.proposal.source}</div>
-              <h4>{state.proposal.title}</h4>
-              <p className="proposal-scope">Scope: {state.proposal.scope}</p>
-              <div className="proposal-section"><span>Risks</span><ul>{state.proposal.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul></div>
-              <div className="proposal-section"><span>Verification plan</span><ol>{state.proposal.verification_plan.map((step) => <li key={step}>{step}</li>)}</ol></div>
-              <div className="rollback"><span>Rollback</span><p>{state.proposal.rollback_plan}</p></div>
-              {state.approval ? <div className={`decision-box ${state.approval.approved ? "approved" : "denied"}`}><strong>{state.approval.approved ? "Approved" : "Denied"}</strong><span>{state.approval.approved ? "Remediation is running or was applied." : "No remediation was executed."}</span></div> : <div className="approval-actions"><button className="danger-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/approval", { decision: "deny", proposal_id: state.proposal!.id }), false)}>Deny</button><button className="approve-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/approval", { decision: "approve", proposal_id: state.proposal!.id }), false)}>Approve remediation</button></div>}
-              <small className="approval-default">Default: deny. No mutation occurs without an explicit approval request.</small>
-            </>
-          </section> : null}
-
-          {!liveRun ? <section className="panel verification-panel">
-            <div className="panel-header"><div><div className="section-kicker">RECOVERY</div><h3>Before / after</h3></div><span className="provenance-chip observed">new evidence</span></div>
-            <div className="comparison"><div><span>Before</span><strong>{incidentCheckoutStatus === "—" ? "—" : `HTTP ${incidentCheckoutStatus}`}</strong><small>{stringOf(incidentCheckout.error_code, "Awaiting fault probe")}</small></div><div className="comparison-arrow">→</div><div><span>After</span><strong>{verification ? `HTTP ${statusOf(verification.checkout)}` : "—"}</strong><small>{verification?.verified ? "verified by new checkout" : "awaiting approved remediation"}</small></div></div>
-            {state.error ? <div className="error-inline">{state.error}</div> : null}
-          </section> : null}
-        </aside> : null}
         </section>
+      </section>
+
       </section>
 
       {paymentDetailsOpen ? <div className="modal-backdrop" role="presentation" onClick={() => setPaymentDetailsOpen(false)}>
