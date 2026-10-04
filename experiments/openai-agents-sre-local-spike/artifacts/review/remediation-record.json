@@ -1,6 +1,6 @@
 {
   "status": "executed",
-  "session_id_label": "sess_…5f8929e815",
+  "session_id_label": "sess_…849611c13a",
   "approved_before_mutation": true,
   "allowlisted_action": "restore_known_safe_synthetic_configuration_and_restart_target_only",
   "runtime_config_after": {
@@ -11,7 +11,7 @@
   "target_only": true,
   "docker_socket_exposed_to_agent": false,
   "production_affected": false,
-  "run_id": "20261002T200149Z",
+  "run_id": "20261003T011902Z",
   "entrypoint": "workbench_browser",
   "verification_turn": "post_remediation_verification",
   "verification_outcome": "completed"

@@ -2,7 +2,7 @@
 PASS
 
 ./.ui-venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
-Ran 35 tests
+Ran 39 tests
 OK (skipped=1 opt-in Docker integration test)
 
 ARMIE_RUN_DOCKER_INTEGRATION=1 ./.ui-venv/bin/python -m unittest tests.test_docker_integration -v
@@ -15,10 +15,12 @@ PASS
 npm --prefix experiments/openai-agents-sre-local-spike/ui run build
 PASS (vite build)
 
-Browser-triggered live run `20261002T200149Z`
+Browser-triggered live run `20261003T011902Z`
 PASS; real Session created from the saved Agent, self-hosted environment
 connected, four turns completed, explicit Workbench approval resumed the same
 Session, controlled remediation executed, and same-Session verification passed.
+Per-turn event counts: 2245, 1139, 794, 1190. Verification observed health
+HTTP 200, checkout HTTP 200, and 2 successes / 0 timeouts.
 
 ./.ui-venv/bin/python -m controller.cli resume --help
 PASS (resume command exposes explicit approve/deny decision)
@@ -60,6 +62,11 @@ No new Session or model turn was created.
 2026-10-03 lifecycle cleanup regression checks:
 PASS; deliberate StreamMonitor stop closes the open SSE response.
 PASS; executor cleanup targets only its exact per-run named container.
+Post-run lifecycle inspection: the latest exact one-off executor was still
+running and was stopped explicitly; automatic end-to-end cleanup is not claimed.
+
+Source-label regression:
+PASS; Workbench approval is recorded as explicit_workbench_browser_approval.
 
 2026-10-03 Workbench browser verification:
 PASS; current target shows Fault ready / HTTP 504 after Reset.

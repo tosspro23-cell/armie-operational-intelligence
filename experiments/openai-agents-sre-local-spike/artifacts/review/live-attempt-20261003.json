@@ -1,0 +1,35 @@
+{
+  "run_id": "20261003T011902Z",
+  "entrypoint": "workbench_browser",
+  "status": "completed",
+  "saved_agent_reused": true,
+  "configured_model": "gpt-6-luna",
+  "session_id_label": "sess_…849611c13a",
+  "environment_id_label": "ccarenv_…OGEwZTNlNw",
+  "environment_type": "self_hosted",
+  "environment_connected": true,
+  "turn_outcomes": ["completed", "completed", "completed", "completed"],
+  "turn_event_counts": {
+    "initial_investigation": 2245,
+    "contradictory_evidence_reassessment": 1139,
+    "remediation_proposal": 794,
+    "post_remediation_verification": 1190
+  },
+  "approval": {
+    "approved": true,
+    "mutation_before_approval": false,
+    "decision_source": "explicit_workbench_browser_approval"
+  },
+  "remediation": "restore_known_safe_synthetic_configuration_and_restart_target_only",
+  "verification": {
+    "health_status": 200,
+    "checkout_status": 200,
+    "checkout_outcome": "authorized",
+    "checkout_error_code": null,
+    "attempts": 2,
+    "successes": 2,
+    "timeouts": 0,
+    "same_session": true
+  },
+  "raw_event_artifacts": "ignored/artifacts/runs/20261003T011902Z/"
+}

@@ -1,7 +1,8 @@
 # Revalidation — 2026-10-03
 
-This review distinguishes today's checks from the completed live run retained
-under `artifacts/runs/20261002T200149Z/`.
+This review distinguishes the read-only checks from the completed live runs.
+The latest browser-triggered completion is retained under
+`artifacts/runs/20261003T011902Z/`.
 
 ## Current source and deterministic checks
 
@@ -42,7 +43,7 @@ the event stream to be open before sending work, an observed
 `agent.session.environment.connected` event, and explicit terminal turn outcome
 handling. The implementation continues to follow those requirements.
 
-## Retained live evidence invariants
+## Earlier retained live evidence invariants
 
 - 5,478 streamed Agents API events.
 - One distinct Session ID across all retained events.
@@ -50,8 +51,9 @@ handling. The implementation continues to follow those requirements.
 - Four completed top-level turns; zero failed/cancelled top-level turns.
 - Approval was recorded before the first remediation mutation event.
 - Checkout sequence: eight HTTP 504 observations followed by HTTP 200.
-- One API `internal_error` occurred after all four completed turns and verified
-  remediation. It is preserved as a limitation rather than hidden.
+- The earlier retained stream had one API `internal_error` after all four
+  completed turns and verified remediation. It is preserved as a limitation
+  rather than hidden; the latest browser-triggered run has no such event.
 
 ## Findings corrected in this revalidation
 
@@ -70,8 +72,10 @@ Controller target in the incident and payment regions.
 
 ## Remaining limitations
 
-- The cleanup fix is deterministic-tested but has not been exercised by a new
-  paid Agents API Session run.
+- The cleanup boundary is deterministic-tested. The latest paid Agents API
+  Session completed all four top-level turns, but final inspection found its
+  one-off executor still running; that exact experiment container was then
+  stopped explicitly. End-to-end post-run executor cleanup is not claimed.
 - The recovery sample is short and synthetic; it is not production evidence.
 - Dependency latency remains elevated in the synthetic fixture.
 - The retained verification correctly records a `.1` service version with a
@@ -80,3 +84,21 @@ Controller target in the incident and payment regions.
 - Public readiness remains conditional because reachable history contains
   host-specific path examples and local author metadata. Repository visibility
   was not changed.
+
+## Post-approval completion — 2026-10-04
+
+- The Workbench browser approval resumed the pending stored Session
+  `sess_…849611c13a`; it did not create a replacement Session.
+- The resumed Session reconnected the self-hosted executor, recorded explicit
+  approval before mutation, restored the checked-in 300 ms runtime configuration,
+  restarted only the synthetic target, and continued the same Session.
+- The latest run `20261003T011902Z` completed all four turns: initial
+  investigation (2,245 events), contradictory-evidence reassessment (1,139),
+  remediation proposal (794), and post-remediation verification (1,190).
+- The verification turn independently observed health HTTP 200, checkout HTTP
+  200 with `authorized` and no error code, two attempts, two successes, zero
+  timeouts, new recovery logs, and the restored 300 ms configuration. Downstream
+  latency remained 168 ms, above the 150 ms warning threshold.
+- The latest raw run shows no failed or cancelled top-level turn. It provides
+  direct evidence for the lifecycle: approval → controlled mutation → new
+  system evidence → same-Session verification.

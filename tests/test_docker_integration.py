@@ -35,10 +35,15 @@ class DockerRemediationIntegrationTests(unittest.TestCase):
         )
 
     def test_fault_then_approved_remediation_survives_target_restart(self) -> None:
+        build_args = (
+            ("--no-build",)
+            if os.environ.get("ARMIE_REUSE_LOCAL_IMAGES") == "1"
+            else ("--build",)
+        )
         start = self._compose(
             "up",
             "-d",
-            "--build",
+            *build_args,
             "--force-recreate",
             "target",
             env={"RESET_RUNTIME_CONFIG": "1"},

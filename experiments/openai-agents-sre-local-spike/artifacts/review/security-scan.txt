@@ -31,3 +31,11 @@ header values, 0 signed URLs, 0 full Session IDs, 0 full environment IDs, and
 0 host-specific local paths. The latest ignored raw run contains 0 API-key or
 Authorization-header values. Public-readiness remains CONDITIONAL for the
 previously recorded history metadata/path reason; visibility was not changed.
+
+Final branch scan after latest evidence updates: PASS. Tracked non-example
+environment files=1 (`.env.example` only); history credential-like commits=0;
+review credential-like matches=0; ignored raw-run API-key or Authorization
+header matches=0. The three tracked source/document matches are placeholder or
+redaction-test text, not credential values. The Docker integration first hit a
+registry `401 Unauthorized` while attempting an image rebuild; the rerun with
+the already-built local image passed, and no registry credential was recorded.

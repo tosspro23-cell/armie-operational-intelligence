@@ -1,15 +1,15 @@
 # Live Run Summary
 
 Status: the real Agents API architecture spike completed for the isolated
-synthetic service. The run created one Session from the saved correct-project
-Agent, connected one self-hosted executor, completed four turns, reached the
-human approval boundary, executed the allowlisted target-only remediation after
-explicit approval, and verified recovery in the same Session. No production
-system was changed.
+synthetic service. The latest browser-triggered run created one Session from the
+saved correct-project Agent, connected one self-hosted executor, completed four
+turns, reached the human approval boundary, executed the allowlisted target-only
+remediation after explicit approval, and verified recovery in the same Session.
+No production system was changed.
 
 Reviewed branch base: `develop` at `80c4c43`.
 Validation branch: `spike/openai-agents-sre-local-ui`.
-Latest live run: `20261002T200149Z` (started from the Workbench browser button).
+Latest live run: `20261003T011902Z` (started from the Workbench browser button).
 An earlier complete live run is retained under the ignored raw artifacts.
 
 ## Observable results
@@ -21,7 +21,8 @@ An earlier complete live run is retained under the ignored raw artifacts.
 - Eight real `POST /checkout` requests returned 504 with
   `checkout_dependency_timeout`; the post-remediation probe returned HTTP 200.
 - The downstream diagnostic returned `status=ok`, observed latency 168 ms, and warning threshold 150 ms.
-- Metrics recorded 8 attempts, 8 timeouts, and 0 successes.
+- The fault sample recorded eight timeouts; the post-remediation verification
+  recorded two attempts, two successes, and zero timeouts.
 - Structured logs, deployment metadata, runtime configuration, and runbook were read from the container.
 - The isolated executor reached the target, read the runtime evidence, and could not write the read-only evidence mount.
 - A force-recreate with the fault fixture reproduced the checkout timeout.
@@ -34,17 +35,18 @@ An earlier complete live run is retained under the ignored raw artifacts.
 - The executor image reported `codex-cli 0.156.0-alpha.9`; the workspace guide
   uses the actual Compose service name `target`.
 - The real Session used saved Agent `SRE agent for incident response` with
-  model `gpt-6-luna`; stable redacted labels are `sess_…5f8929e815` and
-  `ccarenv_…MWFhM2ViZQ`.
+  model `gpt-6-luna`; stable redacted labels are `sess_…849611c13a` and
+  `ccarenv_…OGEwZTNlNw`.
 - The same Session completed initial investigation, contradiction reassessment,
   remediation proposal, and post-remediation verification. Per-turn event
-  counts were 1813, 1143, 1039, and 1479; each sanitized latest-item capture
-  contains 5 items.
+  counts were 2245, 1139, 794, and 1190.
 - After explicit approval, the safe 300 ms configuration was restored and the
   Agent observed HTTP 200 checkout, health 200, and zero timeouts in its fresh
   verification sample.
-- The user approval is recorded in the run artifact. A later duplicate approval
-  request was rejected with HTTP 409 because the run was already complete.
+- The browser approval is recorded in the run artifact. The controller restored
+  the checked-in safe configuration, restarted only the target, reconnected the
+  executor, and continued the same Session. A later duplicate approval request
+  was rejected with HTTP 409 because the run was already complete.
 - The earlier 2026-09-30 saved-agent/project mismatch remains preserved as a
   historical ignored run; it is not the result of this completed run. The
   browser entrypoint is recorded as `workbench_live_run_requested` with
@@ -67,12 +69,11 @@ Session HTTP 200, stored identity matches, status `idle`, 57 saved items, and
 Saved Agent name/model `SRE agent for incident response` / `gpt-6-luna`.
 No new Session was created.
 
-The raw stream contains four completed and zero failed/cancelled top-level
-turns. One `internal_error` arrived after those turns and after verified
-remediation. Three completed-run executor containers were also found still
-running. The controller cleanup path now explicitly closes the SSE response
-and removes only its exact per-run executor container; deterministic tests cover
-both boundaries, and the stale experiment-only containers were removed.
+The raw stream for the latest run contains four completed and zero
+failed/cancelled top-level turns. Deterministic tests cover SSE closure and
+exact per-run executor cleanup. Final inspection found the latest one-off
+executor still running; it was stopped by an explicit operator cleanup of that
+exact experiment container. No unrelated container was touched.
 
 The Workbench now separates the current target from retained Session evidence.
 After Reset, browser verification showed current `Fault ready` / HTTP 504 in

@@ -481,15 +481,22 @@ def run_resume(
                 approved = approval_from_text(input("Approve proposed remediation? [y/N] "))
             else:
                 print("Approve proposed remediation? [y/N] (non-interactive default: N)")
+        decision_source = (
+            "explicit_workbench_browser_approval"
+            if approve_remediation
+            else "explicit_workbench_browser_denial"
+            if deny_remediation
+            else "interactive_terminal_prompt"
+        )
         capture.controller(
             "approval_decision",
-            {"approved": approved, "source": "explicit_flag_or_human_prompt"},
+            {"approved": approved, "source": decision_source},
         )
         capture.write_json(
             "approval_record.json",
             {
                 "approved": approved,
-                "source": "explicit_flag_or_human_prompt",
+                "source": decision_source,
                 "session_id": session_id,
                 "recorded_at": datetime.now(timezone.utc).isoformat(),
             },

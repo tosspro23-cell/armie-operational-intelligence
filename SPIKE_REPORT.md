@@ -14,10 +14,11 @@ the customer-facing payment failure, fault evidence, controller SSE events, and
 approval boundary. Its fixed `ui-demo-order` request returned a real synthetic
 HTTP 504 and emitted a `payment.checkout.simulated` controller event. The
 Workbench now also provides a bounded browser start action for a real Agents
-API Session. The browser-triggered path was exercised end to end in run
-`20261002T200149Z`, including Session creation, environment connection,
+API Session. The latest browser-triggered path was exercised end to end in run
+`20261003T011902Z`, including Session creation, environment connection,
 contradiction reassessment, explicit approval, controlled remediation, and
-same-Session recovery verification.
+same-Session recovery verification. The earlier completed browser run remains
+in the ignored runtime history for comparison.
 The Workbench control surface is grouped into an Incident Workspace for the
 synthetic payment service and a purple Agents API Control Room for Session
 start, observable turns, approval, event stream, and same-session recovery.
@@ -99,16 +100,16 @@ included in the initial user message.
 
 ## 5. Agent Investigation Trace
 
-The latest browser-triggered live run (`20261002T200149Z`) created one real
+The latest browser-triggered live run (`20261003T011902Z`) created one real
 Session and connected one self-hosted environment. The same Session was used
 for all four captured turns:
 
 | Turn | Captured event records | Retrieved Session Items | Outcome |
 | --- | ---: | ---: | --- |
-| initial investigation | 1,813 | 5 | completed |
-| contradictory-evidence reassessment | 1,143 | 5 | completed |
-| remediation proposal | 1,039 | 5 | completed |
-| post-remediation verification | 1,479 | 5 | completed |
+| initial investigation | 2,245 | captured | completed |
+| contradictory-evidence reassessment | 1,139 | captured | completed |
+| remediation proposal | 794 | captured | completed |
+| post-remediation verification | 1,190 | captured | completed |
 
 The controller captured environment connection events, streamed events,
 turn outcomes, tool and shell interaction records, retrieved items, and final
@@ -128,18 +129,18 @@ that a prior 118 ms response had succeeded.
 
 ## 7. Evidence Gathered
 
-The live target returned health 200 and eight real checkout responses with
-status 504. The downstream diagnostic reported status `ok`, latency 168 ms,
-and a warning threshold of 150 ms. Metrics recorded eight attempts and eight
+The live target returned health 200 and eight real fault checkout responses
+with status 504, followed by a post-remediation HTTP 200 response. The
+downstream diagnostic reported status `ok`, latency 168 ms, and a warning
+threshold of 150 ms. The fault sample recorded eight attempts and eight
 timeouts. Structured JSONL logs, deployment metadata, runtime configuration,
 and the runbook were read from the running container. The executor boundary
 check reached the target, read the evidence volume, and was denied write access
 by the read-only mount. A target force-recreate with the fault fixture produced
 the same timeout again. After explicit approval, the target-only controlled
 restart restored the safe 300 ms timeout; the Agent then observed health 200,
-checkout 200, a ready checkout path, and fresh metrics with two attempts and
-zero timeouts in its verification sample. A later controller probe added one
-additional successful checkout to the raw probe artifact.
+checkout 200, a ready checkout path, and fresh metrics with two attempts, two
+successes, and zero timeouts in its verification sample.
 
 ## 8. Hypothesis Revision Test
 
@@ -222,7 +223,7 @@ deterministic tests verified artifact persistence, field-aware redaction,
 credential separation, approval denial, saved-agent payload construction, and
 final-item extraction.
 The latest live raw JSONL stream and per-turn artifacts are under the ignored
-run directory `artifacts/runs/20261002T200149Z/`; sanitized summaries and redacted
+run directory `artifacts/runs/20261003T011902Z/`; sanitized summaries and redacted
 metadata are committed under the review directory. The UI presents observable
 event and final-output evidence, not private hidden chain-of-thought.
 
@@ -285,14 +286,16 @@ mutation; the fallback label-based lookup was added and the subsequent resume
 succeeded. This is an operational limitation of the local one-off Compose
 lifecycle, not evidence of a second Session.
 
-The latest live stream contains one API `internal_error` event after all four
-top-level turns had completed and after remediation verification. Revalidation
-also found three executor containers from completed runs still running. This
-was a cleanup defect, not a turn failure: the evidence has four completed and
-zero failed/cancelled top-level turns. The controller now closes each SSE
-response explicitly and assigns/removes an exact per-run executor container;
-the three stale experiment-only containers were removed. This cleanup fix is
-deterministically tested but has not triggered a new paid Session run.
+An earlier retained live stream contains one API `internal_error` event after
+all four top-level turns had completed and after remediation verification.
+Revalidation also found executor containers from completed runs still running.
+These were cleanup defects, not turn failures. The latest browser run has four
+completed and zero failed/cancelled top-level turns. The controller now closes
+each SSE response explicitly and assigns/removes an exact per-run executor
+container, with deterministic coverage. Final inspection nevertheless found
+the latest one-off executor still running until it was stopped by an explicit
+operator cleanup; end-to-end post-run executor cleanup remains a limitation,
+not a claimed live success.
 
 ## 17. Files Changed
 
@@ -301,7 +304,8 @@ The relevant implementation changes are under `.gitignore`, `README.md`,
 `fixtures/incident_timeline.json`, `sre_environment/`, `target_service/`, and
 `tests/`. This branch additionally adds `UI_SPEC.md`, `ui/`,
 `controller/web_api.py`, `controller/requirements-ui.txt`,
-`scripts/start_sre_ui.sh`, and `tests/test_web_api.py`. Generated runtime
+`scripts/start_sre_ui.sh`, `tests/test_web_api.py`, and the source-label fix in
+`controller/cli.py`. Generated runtime
 outputs remain under ignored `artifacts/` paths.
 `AUDIT_FINDINGS.md` records the pre-fix audit in the original local worktree and
 must be reconciled before relying on that worktree's branch state.
@@ -349,9 +353,10 @@ the Codex conversation.
 Factual observation at this boundary: the local target, self-hosted executor,
 real managed Agent session, multiple investigation turns, contradiction test,
 explicit approval, controlled target-only remediation, and same-session
-post-remediation verification are demonstrated. Two complete live runs are
-retained in the local evidence history, including the latest browser-triggered
-run. The Workbench exposes the approval step only for a pending same-session
+post-remediation verification are demonstrated. Multiple complete live runs
+are retained in the local evidence history, including the latest
+browser-triggered run. The Workbench exposes the approval step only for a
+pending same-session
 run and shows the before/after evidence after completion. The result is
 limited to this isolated synthetic experiment and does not decide the final
 ARMIE architecture or recommend production adoption.

@@ -1,7 +1,7 @@
 {
   "status": "completed",
-  "session_id_label": "sess_…5f8929e815",
-  "environment_id_label": "ccarenv_…MWFhM2ViZQ",
+  "session_id_label": "sess_…849611c13a",
+  "environment_id_label": "ccarenv_…OGEwZTNlNw",
   "environment_remote_url": "[REDACTED_NOT_PERSISTED]",
   "environment_type": "self_hosted",
   "workspace_directory": "/workspace",
@@ -16,6 +16,6 @@
   "turn_outcomes": ["completed", "completed", "completed", "completed"],
   "same_session_reused_for_all_turns": true,
   "remote_url_persisted": false,
-  "raw_artifacts": "ignored/artifacts/runs/20261002T200149Z/",
+  "raw_artifacts": "ignored/artifacts/runs/20261003T011902Z/",
   "entrypoint": "workbench_browser"
 }

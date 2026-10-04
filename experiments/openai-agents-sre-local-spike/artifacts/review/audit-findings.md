@@ -49,3 +49,17 @@ Demonstrated after the Docker retry:
 - executor target reachability, evidence read, and read-only write rejection.
 - Workbench approval actions are now exposed only for a live run in
   `approval_pending`; completed runs reject duplicate approval requests.
+
+Latest browser-triggered completion `20261003T011902Z`:
+
+- explicit Workbench approval was recorded before the allowlisted mutation;
+- the Controller restored the known-safe 300 ms configuration and restarted
+  only the synthetic target;
+- the same Session completed a fresh verification turn with health 200,
+  checkout 200, two successes, and zero timeouts;
+- the latest run completed all four top-level turns with no failed or cancelled
+  turn. The prior retained stream's post-completion `internal_error` remains
+  disclosed as historical evidence rather than attributed to this run.
+- final inspection found the latest one-off executor still running; it was
+  stopped explicitly by exact container name, so end-to-end automatic cleanup
+  remains an open operational limitation.

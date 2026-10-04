@@ -25,6 +25,8 @@ experiments/openai-agents-sre-local-spike/artifacts/review/docker-diagnostics.md
 experiments/openai-agents-sre-local-spike/artifacts/review/evidence-manifest.sha256
 experiments/openai-agents-sre-local-spike/artifacts/review/live-attempt-20260930.json
 experiments/openai-agents-sre-local-spike/artifacts/review/live-attempt-20261002.json
+experiments/openai-agents-sre-local-spike/artifacts/review/live-attempt-20261003.json
+experiments/openai-agents-sre-local-spike/artifacts/review/latest-live-events.redacted.jsonl
 experiments/openai-agents-sre-local-spike/artifacts/review/local-service-validation.md
 experiments/openai-agents-sre-local-spike/artifacts/review/payload-audit.txt
 experiments/openai-agents-sre-local-spike/artifacts/review/remediation-record.json
@@ -37,7 +39,9 @@ experiments/openai-agents-sre-local-spike/artifacts/review/turn-1-events.redacte
 experiments/openai-agents-sre-local-spike/artifacts/review/turn-1-final.md
 experiments/openai-agents-sre-local-spike/artifacts/review/turn-2-events.redacted.jsonl
 experiments/openai-agents-sre-local-spike/artifacts/review/turn-2-final.md
+experiments/openai-agents-sre-local-spike/artifacts/review/turn-3-final.md
 experiments/openai-agents-sre-local-spike/artifacts/review/turn-3-events.redacted.jsonl
+experiments/openai-agents-sre-local-spike/artifacts/review/turn-4-final.md
 experiments/openai-agents-sre-local-spike/artifacts/review/turn-4-events.redacted.jsonl
 experiments/openai-agents-sre-local-spike/artifacts/review/verification-result.md
 experiments/openai-agents-sre-local-spike/ui/README.md
