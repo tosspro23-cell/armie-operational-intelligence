@@ -431,7 +431,13 @@ def live_run_snapshot() -> dict[str, Any]:
         status = "failed"
 
     timeline_events = _progress_events(controller_records)
-    current_stage = next(
+    stage_by_status = {
+        "completed": "Recovery verification completed",
+        "approval_pending": "Human approval required",
+        "denied": "Approval decision recorded",
+        "failed": "Run failed",
+    }
+    current_stage = stage_by_status.get(status) or next(
         (
             event["label"]
             for event in reversed(timeline_events)
