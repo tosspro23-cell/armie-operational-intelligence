@@ -29,6 +29,13 @@ verification, and observable controller events; the blue Payment API Workspace
 groups customer impact and service evidence. Do not infer live completion from
 a green unit-test or frontend build alone.
 
+The current review pass is a UI and evidence-organization update, not a new
+paid Agents API run. It was validated against the retained real Session
+evidence and a fresh controller-only local validation. The latter produced a
+new Incident ID, observed target health 200 and checkout HTTP 504, and left
+the approval state empty. This distinction is intentional: the Workbench can
+be reviewed and demonstrated without silently starting a new Agent Session.
+
 ## Prerequisites
 
 - Python 3.11+ for the controller and tests.

@@ -47,6 +47,12 @@ The live action is available only when the Controller has the two local
 credentials and the non-secret saved-agent/project identifiers. Approval is
 explicit and defaults to no mutation.
 
+The current UI review pass has been validated against the retained real
+Session evidence and a fresh controller-only validation. It does not create a
+new paid Agents API Session merely by opening or refreshing the page. A new
+live Session starts only when the user explicitly chooses **Start Agents API
+investigation** after **Reset fault**.
+
 Use **Reset fault** before a new run when the previous local run is still in an
 approval or recovered state. Reset recreates the synthetic target with the
 known fault and leaves it in `Fault ready`. The page is intentionally grouped

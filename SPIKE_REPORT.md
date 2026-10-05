@@ -14,8 +14,8 @@ the customer-facing payment failure, fault evidence, controller SSE events, and
 approval boundary. Its fixed `ui-demo-order` request returned a real synthetic
 HTTP 504 and emitted a `payment.checkout.simulated` controller event. The
 Workbench now also provides a bounded browser start action for a real Agents
-API Session. The latest browser-triggered path was exercised end to end in run
-`20261003T011902Z`, including Session creation, environment connection,
+API Session. The latest retained browser-triggered path was exercised end to
+end in run `20261005T004839Z`, including Session creation, environment connection,
 contradiction reassessment, explicit approval, controlled remediation, and
 same-Session recovery verification. The earlier completed browser run remains
 in the ignored runtime history for comparison.
@@ -29,6 +29,26 @@ target without replacing its runtime configuration, so a post-remediation
 HTTP 200 remains healthy until Reset fault is explicitly selected. Local
 actions hide any historical live-run view so old recovery evidence cannot be
 mistaken for the current target.
+
+### Current review pass — 2026-10-05
+
+This pass completes the local Workbench review surface and documentation for
+this stage. It does not claim a new paid Agents API run. The retained real run
+above remains the evidence for saved-agent reuse, self-hosted environment
+connection, multi-turn investigation, approval, remediation, and same-session
+verification. The new local validation path was run independently and
+observed target health 200, checkout HTTP 504 with
+`checkout_dependency_timeout`, structured evidence, and a read-only boundary;
+it created a new Incident ID and did not create an Agent proposal or approval
+request.
+
+The Workbench now presents three distinct review concepts: the blue Payment
+API evidence timeline, the purple Agent lifecycle/progress timeline, and a
+redacted Incident history index. Final outputs are rendered as safe rich text;
+the UI does not expose hidden chain-of-thought. Older runs created before
+Incident IDs were introduced are labelled as legacy history records. Raw
+runtime traces remain ignored under `artifacts/runs/`; only sanitized review
+evidence is eligible for version control.
 
 The Workbench trigger boundary was rechecked on 2026-10-04 after a UI report
 that local validation disabled the purple Agent API control and displayed an
@@ -113,16 +133,16 @@ included in the initial user message.
 
 ## 5. Agent Investigation Trace
 
-The latest browser-triggered live run (`20261003T011902Z`) created one real
+The latest retained browser-triggered live run (`20261005T004839Z`) created one real
 Session and connected one self-hosted environment. The same Session was used
 for all four captured turns:
 
 | Turn | Captured event records | Retrieved Session Items | Outcome |
 | --- | ---: | ---: | --- |
-| initial investigation | 2,245 | captured | completed |
-| contradictory-evidence reassessment | 1,139 | captured | completed |
-| remediation proposal | 794 | captured | completed |
-| post-remediation verification | 1,190 | captured | completed |
+| initial investigation | 1,664 | captured | completed |
+| contradictory-evidence reassessment | 1,479 | captured | completed |
+| remediation proposal | 649 | captured | completed |
+| post-remediation verification | 877 | captured | completed |
 
 The controller captured environment connection events, streamed events,
 turn outcomes, tool and shell interaction records, retrieved items, and final
@@ -240,7 +260,7 @@ deterministic tests verified artifact persistence, field-aware redaction,
 credential separation, approval denial, saved-agent payload construction, and
 final-item extraction.
 The latest live raw JSONL stream and per-turn artifacts are under the ignored
-run directory `artifacts/runs/20261003T011902Z/`; sanitized summaries and redacted
+run directory `artifacts/runs/20261005T004839Z/`; sanitized summaries and redacted
 metadata are committed under the review directory. The UI presents observable
 event and final-output evidence, not private hidden chain-of-thought.
 
