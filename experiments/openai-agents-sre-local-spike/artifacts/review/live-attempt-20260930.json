@@ -1,0 +1,18 @@
+{
+  "attempt_date": "2026-09-30",
+  "credential_readiness": "passed_presence_only",
+  "local_docker_validation": "passed",
+  "local_incident_validation": "passed",
+  "session_creation": "failed_before_session_creation",
+  "session_id": null,
+  "environment_id": null,
+  "saved_agent_reused": false,
+  "agents_api_error_category": "saved_agent_not_found_in_configured_project",
+  "agents_api_http_status": 404,
+  "executor_started": false,
+  "approval_reached": false,
+  "remediation_executed": false,
+  "verification_executed": false,
+  "partial_artifact_run": "artifacts/runs/20260930T084958Z/",
+  "next_action": "Use matching controller and environment keys in the project that owns the saved agent; do not create a replacement agent"
+}

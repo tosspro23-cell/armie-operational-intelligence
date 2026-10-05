@@ -1,0 +1,20 @@
+{
+  "agents_api_environment_id_label": "ccarenv_…OGEwZTNlNw",
+  "agents_api_session_id_label": "sess_…849611c13a",
+  "configured_model": "gpt-6-luna",
+  "credential_readiness": "passed_presence_only",
+  "session_creation_status": "completed",
+  "saved_agent_reused": true,
+  "saved_agent_id_label": "agent_…b6d742cbb6",
+  "deployment_version": "deploy-2026-09-20.2",
+  "environment_type": "self_hosted",
+  "experiment": "armie-operational-intelligence",
+  "experiment_version": "spike-001-live-validation",
+  "base_commit": "80c4c43cd14aaba3678323c96ee9806b606a3200",
+  "live_run_commit": "f153d9739f376a10c2ef9857e2588cb450f5b62c",
+  "validation_git_state": "live_run_completed_with_approval_and_verification",
+  "live_run_id": "20261003T011902Z",
+  "target_service_version": "synthetic-payment-api-2026.09.20.2",
+  "entrypoint": "workbench_browser",
+  "raw_event_artifacts": "ignored/artifacts/runs/20261003T011902Z/"
+}

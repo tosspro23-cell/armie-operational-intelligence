@@ -1,0 +1,21 @@
+{
+  "status": "completed",
+  "session_id_label": "sess_…849611c13a",
+  "environment_id_label": "ccarenv_…OGEwZTNlNw",
+  "environment_remote_url": "[REDACTED_NOT_PERSISTED]",
+  "environment_type": "self_hosted",
+  "workspace_directory": "/workspace",
+  "saved_agent_reused": true,
+  "saved_agent_name": "SRE agent for incident response",
+  "saved_agent_id_label": "agent_…b6d742cbb6",
+  "configured_model": "gpt-6-luna",
+  "credential_readiness": "passed_presence_only",
+  "local_docker_validation": "passed",
+  "local_incident_validation": "passed",
+  "environment_connected": true,
+  "turn_outcomes": ["completed", "completed", "completed", "completed"],
+  "same_session_reused_for_all_turns": true,
+  "remote_url_persisted": false,
+  "raw_artifacts": "ignored/artifacts/runs/20261003T011902Z/",
+  "entrypoint": "workbench_browser"
+}

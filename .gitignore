@@ -2,8 +2,14 @@
 __pycache__/
 *.py[cod]
 .venv/
+.ui-venv/
+node_modules/
+experiments/openai-agents-sre-local-spike/ui/dist/
 .pytest_cache/
 .env
+.env.*
+!.env.example
 artifacts/*
 !artifacts/README.md
-
+experiments/openai-agents-sre-local-spike/artifacts/runs/
+experiments/openai-agents-sre-local-spike/artifacts/runtime/

@@ -20,32 +20,122 @@ configuration and restart the synthetic target container.
 
 ## Current execution status
 
-Source and deterministic tests are implemented. A real acceptance run is only
-complete after `SPIKE_REPORT.md` records an actual session ID and the captured
-JSONL evidence under `artifacts/runs/`. Do not infer completion from a green
-unit-test run.
+Docker, the deterministic local incident, and real saved-agent acceptance runs
+have been demonstrated. The latest run was started from the browser Workbench
+button and completed the same-session approval continuation and
+post-remediation verification. The purple Agents API Control Room now groups
+Session identity, investigation turns, approval, controlled remediation,
+verification, and observable controller events; the blue Payment API Workspace
+groups customer impact and service evidence. Do not infer live completion from
+a green unit-test or frontend build alone.
+
+The current review pass is a UI and evidence-organization update, not a new
+paid Agents API run. It was validated against the retained real Session
+evidence and a fresh controller-only local validation. The latter produced a
+new Incident ID, observed target health 200 and checkout HTTP 504, and left
+the approval state empty. This distinction is intentional: the Workbench can
+be reviewed and demonstrated without silently starting a new Agent Session.
 
 ## Prerequisites
 
 - Python 3.11+ for the controller and tests.
 - Docker Desktop with permission to access its Docker socket.
-- `OPENAI_API_KEY` exported in the invoking shell. The controller reads this
-  one environment variable only; it never prints or writes its value.
-- An API key with the Agents API permissions required by the official
-  self-hosted sandbox documentation. The documentation recommends a separate
-  restricted environment key for `CODEX_API_KEY`; this spike only accepts the
-  requested `OPENAI_API_KEY` input and passes it to the isolated executor at
-  runtime. That limitation is reported explicitly.
+- `OPENAI_API_KEY` exported in the invoking shell for the host-side controller.
+  It must be allowed to read/write Agents API sessions and write responses
+  (`api.agents.read`, `api.agents.write`, and `api.responses.write`). It is
+  never passed to the executor.
+- `OPENAI_EXECUTOR_API_KEY` exported in the invoking shell as a separate,
+  restricted Agents environment key. It must belong to the same organization,
+  project, and identity scope as the session. It is passed to the executor
+  only as `CODEX_API_KEY`.
+- `ARMIE_SRE_AGENT_ID` and `OPENAI_PROJECT_ID` set locally to the saved agent
+  and project identifiers supplied for this spike. They are non-secret runtime
+  identifiers and are intentionally not committed to source.
 - A valid `gh` authentication if the repository is to be created on GitHub.
 
 ## Run the deterministic checks
 
 ```bash
-cd /Users/ting/Documents/New\ project/armie-operational-intelligence
+cd /path/to/armie-operational-intelligence
 python3 -m unittest discover -s tests -v
 ```
 
 The tests do not call OpenAI and do not replace the real acceptance run.
+
+## Open the local SRE Console
+
+The UI is a presentation and control layer over the local Controller. The
+browser never receives credentials, Docker access, or arbitrary command
+capabilities. It can run either of two deliberately separate modes:
+
+- **Start local validation** runs the deterministic controller-only proof. It
+  is useful for demonstrating the payment symptom and read-only evidence
+  boundary without API usage. It observes the target's current state; it does
+  not reset a recovered target, create an Agent proposal, or create an approval
+  request. Use **Reset fault** when you intentionally want to reintroduce the
+  deterministic incident.
+- **Start Agents API investigation** starts one real Session from the saved SRE
+  Agent, connects the self-hosted executor in Docker, streams observable
+  session evidence, pauses at the human approval gate, and continues the same
+  Session through controlled remediation and independent verification.
+
+From the repository root, install the isolated UI dependencies once:
+
+```bash
+python3 -m venv .ui-venv
+.ui-venv/bin/python -m pip install -r controller/requirements-ui.txt
+npm ci --prefix experiments/openai-agents-sre-local-spike/ui
+```
+
+Then start both local processes with:
+
+```bash
+./scripts/start_sre_ui.sh
+```
+
+Open <http://127.0.0.1:5173>. For the real live demonstration, choose
+**Start Agents API investigation**. The page will reproduce the checkout
+fault, create the real Session, show the investigation turns and event
+metadata, present the evidence-backed proposal, and enable Approve/Deny only
+while the live run is waiting for a decision. After approval, the same Session
+must inspect new health, checkout, metrics, and log evidence before the page
+shows recovery.
+
+The **Reset fault** action is a preparation step, not another validation run:
+it recreates the target with the deterministic fault and leaves the target in
+`Fault ready`, so **Start Agents API investigation** becomes available without
+requiring terminal commands. The blue payment controls and evidence panels are
+the synthetic service workspace; the purple Agents API Control Room owns the
+Session, investigation turns, proposal, approval, event stream, and
+same-session recovery check.
+
+After a completed run, the purple control room retains that Session as
+historical review evidence. The incident header and blue Payment API Workspace
+always show the target's current Controller state, so a later **Reset fault**
+cannot be confused with the previous run's recovered HTTP 200 result.
+
+Each deliberate fault reset creates a stable `Incident ID` such as
+`INC-20261005-084500-AB12CD34`. It is persisted in the run's `incident.json`
+and runtime identity, and is shown in the Workbench beside the run ID. The
+read-only `/api/incidents` index lists prior local lifecycles with sanitized
+status, checkout result, approval, verification, and log-availability fields.
+The incident ID identifies the fault lifecycle; the run ID identifies one
+observation or Agent Session execution associated with it.
+
+The Workbench keeps two timelines deliberately separate. The blue Payment API
+timeline is the target's synthetic evidence sequence (deployment, degraded
+checkout, and contradictory service observations). The purple Agents API
+progress timeline is built from observable Controller and Agents API lifecycle
+records such as Session creation, environment connection, turn completion,
+item capture, approval, remediation, and verification. It does not claim to
+display hidden chain-of-thought. Full redacted JSONL remains in the run
+artifacts for review, while final Agent outputs are rendered as safe rich text
+with headings, lists, tables, links, and code blocks in the browser.
+
+The credentials are loaded by the local Controller process from the ignored
+`.env.local` when present. They are never sent to the browser. The terminal CLI
+remains available as a diagnostic fallback, but it is no longer required for
+the normal customer-facing demonstration.
 
 ## Prepare and run the local service
 
@@ -56,6 +146,16 @@ curl -fsS http://127.0.0.1:18080/health
 python3 -m controller.cli probe
 ```
 
+By default the controller rebuilds the experiment images before a probe or
+acceptance run. If Docker Hub is temporarily unavailable and the required
+experiment images are already present locally, set
+`ARMIE_REUSE_LOCAL_IMAGES=1` for that run to use Compose `--no-build`. This is
+an explicit local-runtime fallback; it does not alter the image definitions.
+The browser launcher applies this local-image fallback by default so that
+Workbench Reset and local validation do not unexpectedly depend on Docker Hub.
+Set `ARMIE_REUSE_LOCAL_IMAGES=0` before starting the launcher when an explicit
+image rebuild is required.
+
 The service writes structured logs and metrics to a Docker named volume shared
 read-only with the executor. The controller snapshots that volume to
 `artifacts/runs/<run-id>/runtime/` and `artifacts/runtime/` after probing.
@@ -65,15 +165,19 @@ read-only with the executor. The controller snapshots that volume to
 
 ```bash
 export OPENAI_API_KEY='...'
+export OPENAI_EXECUTOR_API_KEY='...'
+export ARMIE_SRE_AGENT_ID='agent-id-from-the-spike-brief'
+export OPENAI_PROJECT_ID='project-id-from-the-spike-brief'
 python3 -m controller.cli run
 ```
 
 The controller will:
 
 - prepare and start the target service;
-- create a real session using saved agent
-  `agent_8041a399c9434e048f081b847bd11b74bf6e735fde2f4685a4`;
-- apply the requested session overrides, including `gpt-5.6-luna`;
+- create a real session using the saved agent ID supplied through
+  `ARMIE_SRE_AGENT_ID`;
+- apply the requested session overrides, including the current saved-agent
+  model `gpt-6-luna`;
 - connect the self-hosted executor inside Docker;
 - send the initial investigation request without pasting the evidence;
 - record streamed events and tool activity;
@@ -86,14 +190,16 @@ the controller executes only the fixed safe-config restoration and target-only
 restart, then asks the same session to inspect actual recovery evidence. It
 does not execute arbitrary agent-provided commands.
 
-For a non-interactive run, the approval gate records a denied decision. To
-explicitly approve from a human-controlled shell, use:
+For a non-interactive run, the approval gate records a denied decision. An
+explicit human-controlled approval can use:
 
 ```bash
 python3 -m controller.cli run --approve-remediation
 ```
 
 That flag is intentionally explicit and still performs the same fixed action.
+Never put either key in a tracked `.env` file. If a local `.env` file is used
+by a shell wrapper, keep it ignored and restrict its permissions.
 
 ## Artifacts
 

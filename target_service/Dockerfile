@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY target_service/app ./app
 COPY fixtures/runtime_config_fault.json ./default_runtime_config.json
 COPY fixtures/deployment.json ./metadata/deployment.json
+COPY fixtures/incident_timeline.json ./metadata/incident_timeline.json
 COPY target_service/config/runbook.md ./runbook/runbook.md
 COPY target_service/entrypoint.sh /usr/local/bin/target-entrypoint
 RUN chmod 0755 /usr/local/bin/target-entrypoint
