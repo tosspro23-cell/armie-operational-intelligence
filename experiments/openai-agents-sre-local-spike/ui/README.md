@@ -61,6 +61,26 @@ API Workspace use only the current Controller target state; resetting the fault
 therefore shows the current HTTP 504 while preserving the prior HTTP 200 proof
 inside the completed Session record.
 
+## Review model
+
+Every **Reset fault** starts a new synthetic incident lifecycle and assigns a
+stable `Incident ID`. The Workbench displays that ID next to the current run,
+and the **Incident history** panel reads a redacted index from
+`GET /api/incidents`. A single Incident ID can have multiple observation or
+Agent run records; the run ID distinguishes those executions. The underlying
+artifacts remain under `artifacts/runs/<run-id>/`, including `incident.json`,
+runtime identity, target probes, Controller events, logs, and (when used) the
+Agents API event and turn records.
+
+The blue target timeline and purple Agent progress timeline answer different
+questions. The target timeline explains what happened to the Payment API. The
+Agent progress timeline explains which observable investigation stage the
+Controller/Session reached. It intentionally reports lifecycle and tool/item
+metadata, turn outcomes, approval, remediation, and verification—not hidden
+model reasoning. Agent final outputs are rendered through a small safe local
+Markdown renderer so headings, emphasis, lists, tables, links, and code blocks
+remain readable without injecting arbitrary HTML.
+
 The **Customer Payment Surface** is a deliberately fixed, local-only payment
 demo. Clicking **Simulate payment** sends one `ui-demo-order` checkout through
 the FastAPI controller to the running target. A failure is shown first as a

@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 from urllib.parse import parse_qsl, urlsplit
 
 from . import config
@@ -95,6 +96,13 @@ def redact(value: Any, key: str | None = None) -> Any:
     return value
 
 
+def new_incident_id() -> str:
+    """Create a human-readable ID for one synthetic incident lifecycle."""
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"INC-{timestamp}-{uuid4().hex[:8].upper()}"
+
+
 class EventCapture:
     def __init__(self, run_dir: Path) -> None:
         self.run_dir = run_dir
@@ -154,6 +162,7 @@ def runtime_identity(
     session_id: str | None = None,
     agent_id: str | None = None,
     environment_id: str | None = None,
+    incident_id: str | None = None,
 ) -> dict[str, object]:
     identity: dict[str, object] = {
         "git_commit": git_commit(),
@@ -164,6 +173,8 @@ def runtime_identity(
         "configured_model": config.MODEL,
         "environment_type": config.ENVIRONMENT_TYPE,
     }
+    if incident_id:
+        identity["incident_id"] = incident_id
     if agent_id:
         identity["agent_id"] = agent_id
     if session_id:

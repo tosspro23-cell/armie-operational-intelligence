@@ -15,7 +15,7 @@ from typing import Any
 
 from . import config
 from .api import AgentApiClient
-from .events import EventCapture, redact, runtime_identity
+from .events import EventCapture, new_incident_id, redact, runtime_identity
 from .probe import (
     probe_incident,
     request_json,
@@ -27,10 +27,47 @@ from .remediation import ApprovalRequired, apply_known_safe_remediation, approva
 from .runner import AttachedExecutor, SessionRunner
 
 
-def new_run() -> tuple[Path, EventCapture]:
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+def new_run(incident_id: str | None = None) -> tuple[Path, EventCapture]:
+    incident_id = incident_id or new_incident_id()
+    run_id = (
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        + f"-{incident_id[-8:]}"
+    )
     run_dir = config.ARTIFACTS_ROOT / "runs" / run_id
-    return run_dir, EventCapture(run_dir)
+    capture = EventCapture(run_dir)
+    capture.write_json(
+        "incident.json",
+        {
+            "incident_id": incident_id,
+            "run_id": run_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "service": "synthetic-payment-api",
+        },
+    )
+    return run_dir, capture
+
+
+def incident_id_for_run(run_dir: Path) -> str:
+    """Read the stable incident identity persisted beside a run."""
+
+    try:
+        value = json.loads((run_dir / "incident.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        value = {}
+    incident_id = value.get("incident_id") if isinstance(value, dict) else None
+    if isinstance(incident_id, str) and incident_id:
+        return incident_id
+    incident_id = new_incident_id()
+    EventCapture(run_dir).write_json(
+        "incident.json",
+        {
+            "incident_id": incident_id,
+            "run_id": run_dir.name,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "service": "synthetic-payment-api",
+        },
+    )
+    return incident_id
 
 
 def prepare_runtime() -> None:
@@ -221,10 +258,11 @@ def run_real(
     """
 
     if prepared_run is None:
-        run_dir, _ = new_run()
+        run_dir, capture = new_run()
     else:
         run_dir = prepared_run
-    capture = EventCapture(run_dir)
+        capture = EventCapture(run_dir)
+    incident_id = incident_id_for_run(run_dir)
     capture.controller("run_started", {"run_dir": str(run_dir.relative_to(config.REPO_ROOT))})
     runner: SessionRunner | None = None
     try:
@@ -258,7 +296,7 @@ def run_real(
         environment_id = environment.get("id") if isinstance(environment, dict) else None
         capture.write_json(
             "runtime_identity.json",
-            runtime_identity(session_id, agent_id, environment_id),
+            runtime_identity(session_id, agent_id, environment_id, incident_id),
         )
         capture.controller(
             "session_created",
@@ -462,7 +500,12 @@ def run_resume(
         )
         capture.write_json(
             "resume_runtime_identity.json",
-            runtime_identity(session_id, agent.get("id"), environment_id),
+            runtime_identity(
+                session_id,
+                agent.get("id"),
+                environment_id,
+                incident_id_for_run(run_dir),
+            ),
         )
         executor_id = _running_executor_id()
         attached = AttachedExecutor(executor_id)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 type JsonMap = Record<string, unknown>;
 
@@ -27,6 +27,7 @@ type Proposal = {
 type ConsoleState = {
   mode: string;
   phase: string;
+  incident_id: string | null;
   run_id: string | null;
   started_at: string | null;
   updated_at: string;
@@ -67,6 +68,7 @@ type LiveTurn = {
 type LiveRun = {
   available: boolean;
   run_id: string;
+  incident_id: string;
   updated_at: string;
   status: string;
   message?: string;
@@ -88,6 +90,8 @@ type LiveRun = {
   turns: LiveTurn[];
   agent_event_type_counts: Record<string, number>;
   controller_timeline: { kind: string; captured_at: string }[];
+  timeline_events: ProgressEvent[];
+  current_stage: string;
   proposal: {
     text: string;
     mutation_executed: boolean;
@@ -96,9 +100,33 @@ type LiveRun = {
   };
 };
 
+type ProgressEvent = {
+  kind: string;
+  label: string;
+  detail: string;
+  captured_at: string;
+  status: string;
+  source: string;
+};
+
+type IncidentRecord = {
+  incident_id: string;
+  run_id: string;
+  created_at: string | null;
+  updated_at: string | null;
+  status: string;
+  checkout_status: number | null;
+  approval: JsonMap | null;
+  verification_completed: boolean;
+  session_id: string | null;
+  event_count: number;
+  logs_available: boolean;
+};
+
 const initialState: ConsoleState = {
   mode: "local_deterministic",
   phase: "idle",
+  incident_id: null,
   run_id: null,
   started_at: null,
   updated_at: new Date().toISOString(),
@@ -242,6 +270,130 @@ function CodeBlock({ value }: { value: unknown }) {
   return <pre className="code-block">{typeof value === "string" ? value : formatJson(value)}</pre>;
 }
 
+function splitTableCells(line: string): string[] {
+  const normalized = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return normalized.split("|").map((cell) => cell.trim());
+}
+
+function isTableSeparator(line: string): boolean {
+  const cells = splitTableCells(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function safeMarkdownHref(value: string): string | null {
+  const href = value.trim().replace(/^<|>$/g, "");
+  return href.startsWith("https://") || href.startsWith("http://") ? href : null;
+}
+
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^\)]+\)|\*[^*]+\*|_[^_]+_)/g;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > cursor) nodes.push(value.slice(cursor, match.index));
+    const token = match[0];
+    if (token.startsWith("**")) {
+      nodes.push(<strong key={`strong-${key++}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("`")) {
+      nodes.push(<code key={`code-${key++}`}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("[")) {
+      const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      const href = link ? safeMarkdownHref(link[2]) : null;
+      nodes.push(href ? <a key={`link-${key++}`} href={href} target="_blank" rel="noreferrer">{link?.[1]}</a> : <span key={`label-${key++}`}>{link?.[1] ?? token}</span>);
+    } else {
+      nodes.push(<em key={`em-${key++}`}>{token.slice(1, -1)}</em>);
+    }
+    cursor = match.index + token.length;
+  }
+  if (cursor < value.length) nodes.push(value.slice(cursor));
+  return nodes;
+}
+
+function RichText({ value }: { value: string }) {
+  const lines = value.replace(/\r\n/g, "\n").split("\n");
+  const blocks: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let key = 0;
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    blocks.push(<p key={`paragraph-${key++}`}>{paragraph.map((line, index) => <span key={index}>{index ? <br /> : null}{renderInlineMarkdown(line)}</span>)}</p>);
+    paragraph = [];
+  };
+
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index];
+    if (!line.trim()) {
+      flushParagraph();
+      index += 1;
+      continue;
+    }
+    if (line.trim().startsWith("```")) {
+      flushParagraph();
+      const language = line.trim().slice(3).trim();
+      const code: string[] = [];
+      index += 1;
+      while (index < lines.length && !lines[index].trim().startsWith("```")) code.push(lines[index++]);
+      if (index < lines.length) index += 1;
+      blocks.push(<pre className="rich-code" key={`code-block-${key++}`} data-language={language}>{code.join("\n")}</pre>);
+      continue;
+    }
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      const Heading = `h${heading[1].length}` as "h1" | "h2" | "h3" | "h4";
+      blocks.push(<Heading key={`heading-${key++}`}>{renderInlineMarkdown(heading[2])}</Heading>);
+      index += 1;
+      continue;
+    }
+    if (line.includes("|") && index + 1 < lines.length && isTableSeparator(lines[index + 1])) {
+      flushParagraph();
+      const headers = splitTableCells(line);
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length && lines[index].includes("|") && lines[index].trim()) rows.push(splitTableCells(lines[index++]));
+      blocks.push(<div className="rich-table-wrap" key={`table-${key++}`}><table><thead><tr>{headers.map((header, cellIndex) => <th key={cellIndex}>{renderInlineMarkdown(header)}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{headers.map((_, cellIndex) => <td key={cellIndex}>{renderInlineMarkdown(row[cellIndex] ?? "")}</td>)}</tr>)}</tbody></table></div>);
+      continue;
+    }
+    const listMatch = line.match(/^\s*([-*]|\d+\.)\s+(.+)$/);
+    if (listMatch) {
+      flushParagraph();
+      const ordered = /\d+\./.test(listMatch[1]);
+      const items: string[] = [];
+      while (index < lines.length) {
+        const item = lines[index].match(/^\s*([-*]|\d+\.)\s+(.+)$/);
+        if (!item || (/\d+\./.test(item[1]) !== ordered)) break;
+        items.push(item[2]);
+        index += 1;
+      }
+      const List = ordered ? "ol" : "ul";
+      blocks.push(<List key={`list-${key++}`}>{items.map((item, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(item)}</li>)}</List>);
+      continue;
+    }
+    if (line.trim().startsWith(">")) {
+      flushParagraph();
+      const quote: string[] = [];
+      while (index < lines.length && lines[index].trim().startsWith(">")) quote.push(lines[index++].trim().replace(/^>\s?/, ""));
+      blocks.push(<blockquote key={`quote-${key++}`}>{quote.map((item, itemIndex) => <p key={itemIndex}>{renderInlineMarkdown(item)}</p>)}</blockquote>);
+      continue;
+    }
+    paragraph.push(line);
+    index += 1;
+  }
+  flushParagraph();
+  return <div className="rich-text">{blocks}</div>;
+}
+
+function InvestigationProgress({ events, currentStage }: { events: ProgressEvent[]; currentStage: string }) {
+  return (
+    <div className="agent-progress">
+      <div className="agent-progress-header"><div className="subsection-label">Agent investigation progress</div><strong>{currentStage}</strong></div>
+      {events.length === 0 ? <div className="empty-state">Waiting for observable Session stages.</div> : <div className="agent-progress-list">{events.map((event, index) => <div className={`agent-progress-item ${event.status}`} key={`${event.kind}-${event.captured_at}-${index}`}><span className="progress-marker" /><div><div className="progress-title"><strong>{event.label}</strong><time>{formatTime(event.captured_at)}</time></div><p>{event.detail}</p></div></div>)}</div>}
+    </div>
+  );
+}
+
 export default function App() {
   const [state, setState] = useState<ConsoleState>(initialState);
   const [events, setEvents] = useState<ConsoleEvent[]>([]);
@@ -252,6 +404,7 @@ export default function App() {
   const [paymentDetailsOpen, setPaymentDetailsOpen] = useState(false);
   const [liveRun, setLiveRun] = useState<LiveRun | null>(null);
   const [liveRunVisible, setLiveRunVisible] = useState(true);
+  const [incidents, setIncidents] = useState<IncidentRecord[]>([]);
 
   const refreshState = useCallback(async () => {
     try {
@@ -286,9 +439,19 @@ export default function App() {
     }
   }, []);
 
+  const refreshIncidents = useCallback(async () => {
+    try {
+      const result = await getJson<{ data: IncidentRecord[] }>("/api/incidents?limit=20");
+      setIncidents(result.data);
+    } catch {
+      // History is additive; the current incident view remains usable if unavailable.
+    }
+  }, []);
+
   useEffect(() => {
     void refreshState();
     void refreshEvents();
+    void refreshIncidents();
     const source = new EventSource("/api/events/stream");
     const handle = (message: MessageEvent<string>) => {
       try {
@@ -317,16 +480,17 @@ export default function App() {
     return () => {
       source.close();
     };
-  }, [refreshEvents, refreshState]);
+  }, [refreshEvents, refreshIncidents, refreshState]);
 
   useEffect(() => {
     void refreshEvidence();
     const timer = window.setInterval(() => {
       void refreshState();
       void refreshEvidence();
+      void refreshIncidents();
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [refreshEvidence, refreshState]);
+  }, [refreshEvidence, refreshIncidents, refreshState]);
 
   const refreshLiveRun = useCallback(async () => {
     try {
@@ -490,6 +654,7 @@ export default function App() {
             </button>
           </div>
           <div className="run-meta">
+            <span>Incident <code>{state.incident_id ?? "—"}</code></span>
             <span>Run <code>{displayedRunId ?? "—"}</code></span>
             <span>Updated {formatTime(state.updated_at)}</span>
           </div>
@@ -535,18 +700,20 @@ export default function App() {
         <div className="panel-header"><div><div className="section-kicker">{historicalLiveRun ? "RETAINED AGENTS API RUN" : "LIVE AGENTS API RUN"}</div><h3>Investigation and approval from the real Session</h3></div><span className="provenance-chip agent">{liveStatus}</span></div>
         <p className="panel-description">The Workbench is reading sanitized runtime artifacts and controller state. It shows observable outputs, event metadata, and tool activity summaries—not hidden chain-of-thought. {historicalLiveRun ? `This completed run (${liveRun.run_id}) is retained evidence; the Payment API workspace below shows the target now.` : liveRun.status === "approval_pending" ? "Review the proposal and use the approval controls below." : liveRun.message || "The Controller is continuing the bounded workflow."}</p>
         <div className="live-run-meta">
+          <div><span>Incident</span><code>{liveRun.incident_id || state.incident_id || "—"}</code></div>
           <div><span>Session</span><code>{compactId(liveRun.session.session_id)}</code></div>
           <div><span>Environment</span><code>{compactId(liveRun.session.environment_id)}</code></div>
           <div><span>Model</span><code>{stringOf(liveRun.session.model)}</code></div>
           <div><span>{historicalLiveRun ? "Connection event" : "Connection"}</span><strong className={liveRun.session.connected ? "live-good" : "live-warn"}>{liveRun.session.connected ? (historicalLiveRun ? "observed" : "connected") : "not observed"}</strong></div>
         </div>
+        <InvestigationProgress events={liveRun.timeline_events ?? []} currentStage={liveRun.current_stage ?? liveStatus} />
         <div className="live-run-grid">
           <div>
             <div className="subsection-label">Observable investigation turns</div>
             <div className="live-turn-list">
               {liveRun.turns.map((turn) => <details className="live-turn" key={turn.label} open={turn.label === "remediation_proposal" || turn.label === "post_remediation_verification"}>
                 <summary><strong>{turn.label.split("_").join(" ")}</strong><span>{turn.status} · {turn.event_count} events</span></summary>
-                <CodeBlock value={turn.final || "No final output captured yet."} />
+                {turn.final ? <RichText value={turn.final} /> : <div className="empty-state">No final output captured yet.</div>}
               </details>)}
             </div>
           </div>
@@ -566,7 +733,7 @@ export default function App() {
         <div className="live-proposal">
           <div className="subsection-label">Evidence-backed proposed remediation</div>
           {liveRun.proposal.approval_recorded ? <div className={`live-decision-banner ${liveRun.proposal.verification_completed ? "verified" : "approved"}`}><strong>{liveRun.proposal.verification_completed ? "Approved · action executed · recovery verified" : "Approved · controlled action in progress"}</strong><span>{liveRun.proposal.verification_completed ? "The same Session inspected fresh post-remediation evidence." : "The Controller is continuing the allowlisted remediation path."}</span></div> : null}
-          <CodeBlock value={liveRun.proposal.text || "Proposal not captured yet."} />
+          {liveRun.proposal.text ? <RichText value={liveRun.proposal.text} /> : <div className="empty-state">Proposal not captured yet.</div>}
           <p className="live-approval-note">{liveRun.proposal.verification_completed ? "The allowlisted action was executed and the same Session completed a fresh recovery recheck. No terminal action was required." : liveRun.proposal.mutation_executed ? "The approved allowlisted action was executed. The Controller is now asking the same Session to perform a fresh recheck; no terminal action is required." : liveRun.status === "approval_pending" ? "No mutation has occurred. Review this proposal, its risks, verification, and rollback before deciding." : "The Controller is preserving the proposal and current lifecycle state."}</p>
           {liveRun.status === "approval_pending" && !liveRun.proposal.approval_recorded ? <><div className="approval-actions"><button className="danger-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/live-run/approval", { decision: "deny" }))}>Deny live remediation</button><button className="approve-button" disabled={busy} onClick={() => void runAction(() => postJson("/api/live-run/approval", { decision: "approve" }))}>Approve live remediation</button></div><small className="approval-default">This decision resumes the same Session through the bounded Controller path. No arbitrary command or production target is exposed.</small></> : null}
         </div>
@@ -671,7 +838,7 @@ export default function App() {
           </section>
 
           <section className="panel timeline-panel">
-            <div className="panel-header"><div><div className="section-kicker">INCIDENT TIMELINE</div><h3>Evidence sequence</h3></div><span className="provenance-chip observed">observed / controller</span></div>
+            <div className="panel-header"><div><div className="section-kicker">TARGET INCIDENT TIMELINE</div><h3>Payment API evidence sequence</h3></div><span className="provenance-chip observed">target / controller</span></div>
             <div className="timeline">
               {timelineEvents.length === 0 && state.phase === "idle" ? <div className="empty-state">Start local validation to populate the observed incident timeline.</div> : null}
               {timelineEvents.map((event, index) => (
@@ -700,6 +867,14 @@ export default function App() {
               {state.phase === "idle" ? <div className="empty-state">No target evidence loaded yet.</div> : null}
             </div>
           </section>
+
+          <details className="panel history-panel">
+            <summary><div><div className="section-kicker">INCIDENT HISTORY</div><h3>Review previous incident lifecycles</h3></div><span className="provenance-chip observed">{incidents.length} recorded</span></summary>
+            <p className="panel-description">Each reset creates a stable Incident ID. Runs, target evidence, Agent Session metadata, approval, remediation, verification, and logs remain associated with that record.</p>
+            <div className="history-list">
+              {incidents.length === 0 ? <div className="empty-state">No incident records available yet.</div> : incidents.map((incident) => <div className={`history-row ${incident.incident_id === state.incident_id ? "current" : ""}`} key={`${incident.incident_id}-${incident.run_id}`}><div><strong>{incident.incident_id}</strong><small>{incident.run_id} · {formatTime(incident.updated_at)}</small></div><div className="history-facts"><span className={`history-status ${incident.status}`}>{incident.status.split("_").join(" ")}</span><span>{incident.checkout_status ? `HTTP ${incident.checkout_status}` : "no checkout"}</span><span>{incident.verification_completed ? "verified" : incident.logs_available ? "logs captured" : "evidence partial"}</span></div></div>)}
+            </div>
+          </details>
         </div>
 
         </section>

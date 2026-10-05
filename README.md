@@ -107,6 +107,24 @@ historical review evidence. The incident header and blue Payment API Workspace
 always show the target's current Controller state, so a later **Reset fault**
 cannot be confused with the previous run's recovered HTTP 200 result.
 
+Each deliberate fault reset creates a stable `Incident ID` such as
+`INC-20261005-084500-AB12CD34`. It is persisted in the run's `incident.json`
+and runtime identity, and is shown in the Workbench beside the run ID. The
+read-only `/api/incidents` index lists prior local lifecycles with sanitized
+status, checkout result, approval, verification, and log-availability fields.
+The incident ID identifies the fault lifecycle; the run ID identifies one
+observation or Agent Session execution associated with it.
+
+The Workbench keeps two timelines deliberately separate. The blue Payment API
+timeline is the target's synthetic evidence sequence (deployment, degraded
+checkout, and contradictory service observations). The purple Agents API
+progress timeline is built from observable Controller and Agents API lifecycle
+records such as Session creation, environment connection, turn completion,
+item capture, approval, remediation, and verification. It does not claim to
+display hidden chain-of-thought. Full redacted JSONL remains in the run
+artifacts for review, while final Agent outputs are rendered as safe rich text
+with headings, lists, tables, links, and code blocks in the browser.
+
 The credentials are loaded by the local Controller process from the ignored
 `.env.local` when present. They are never sent to the browser. The terminal CLI
 remains available as a diagnostic fallback, but it is no longer required for

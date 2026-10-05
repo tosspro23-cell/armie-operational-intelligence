@@ -8,11 +8,28 @@ from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 
+from controller.cli import new_run
 from controller.events import EventCapture
-from controller.web_api import ApprovalRequest, LocalConsole, live_run_snapshot, start_live_run
+from controller.web_api import (
+    ApprovalRequest,
+    LocalConsole,
+    _incident_history,
+    live_run_snapshot,
+    start_live_run,
+)
 
 
 class WebConsoleContractTests(unittest.TestCase):
+    def test_new_run_persists_stable_incident_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("controller.cli.config.ARTIFACTS_ROOT", Path(directory) / "artifacts"):
+                run_dir, _capture = new_run()
+
+            metadata = json.loads((run_dir / "incident.json").read_text(encoding="utf-8"))
+
+        self.assertRegex(metadata["incident_id"], r"^INC-\d{8}-\d{6}-[A-F0-9]{8}$")
+        self.assertEqual(metadata["run_id"], run_dir.name)
+
     @patch("controller.web_api.request_json")
     @patch("controller.web_api.wait_for_health", return_value={"status": 200, "body": {"status": "ok"}})
     @patch("controller.web_api.compose_up")
@@ -196,6 +213,7 @@ class WebConsoleContractTests(unittest.TestCase):
             (run_dir / "runtime_identity.json").write_text(
                 json.dumps(
                     {
+                        "incident_id": "INC-20261002-000000-ABC12345",
                         "agents_api_session_id": "sess_test",
                         "agents_api_environment_id": "env_test",
                         "configured_model": "gpt-6-luna",
@@ -205,8 +223,20 @@ class WebConsoleContractTests(unittest.TestCase):
             )
             (run_dir / "controller_events.jsonl").write_text(
                 "\n".join(
-                    json.dumps({"kind": kind, "captured_at": "2026-10-02T00:00:00Z"})
-                    for kind in ("session_created", "environment_connected")
+                    json.dumps(
+                        {
+                            "kind": kind,
+                            "captured_at": "2026-10-02T00:00:00Z",
+                            "payload": payload,
+                        }
+                    )
+                    for kind, payload in (
+                        ("session_created", {}),
+                        ("environment_connected", {}),
+                        ("session_input", {"label": "initial_investigation"}),
+                        ("turn_completed", {"outcome": "completed"}),
+                        ("session_items_retrieved", {"item_count": 4}),
+                    )
                 ),
                 encoding="utf-8",
             )
@@ -260,6 +290,54 @@ class WebConsoleContractTests(unittest.TestCase):
         self.assertEqual(snapshot["session"]["environment_id"], "env_…[redacted]")
         self.assertIn("agent.session.turn.completed", snapshot["agent_event_type_counts"])
         self.assertFalse(snapshot["proposal"]["mutation_executed"])
+        self.assertEqual(snapshot["incident_id"], "INC-20261002-000000-ABC12345")
+        self.assertEqual(
+            [event["label"] for event in snapshot["timeline_events"]],
+            [
+                "Agents API Session created",
+                "Environment connected",
+                "Initial investigation",
+                "Agent turn completed",
+                "Session items captured",
+            ],
+        )
+
+    def test_incident_history_is_redacted_and_statused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "artifacts"
+            run_dir = root / "runs" / "run-history"
+            (run_dir / "runtime").mkdir(parents=True)
+            (run_dir / "incident.json").write_text(
+                json.dumps(
+                    {
+                        "incident_id": "INC-20261002-000000-ABC12345",
+                        "created_at": "2026-10-02T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "runtime_identity.json").write_text(
+                json.dumps({"agents_api_session_id": "sess_test"}),
+                encoding="utf-8",
+            )
+            (run_dir / "controller_events.jsonl").write_text(
+                json.dumps({"kind": "session_created", "captured_at": "2026-10-02T00:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (run_dir / "target_probe.jsonl").write_text(
+                json.dumps({"label": "checkout_1", "status": 504}) + "\n",
+                encoding="utf-8",
+            )
+            (run_dir / "runtime" / "service.jsonl").write_text("{}\n", encoding="utf-8")
+            with patch("controller.web_api.config.ARTIFACTS_ROOT", root):
+                history = _incident_history()
+
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["incident_id"], "INC-20261002-000000-ABC12345")
+        self.assertEqual(history[0]["status"], "fault_observed")
+        self.assertEqual(history[0]["checkout_status"], 504)
+        self.assertEqual(history[0]["session_id"], "sess_…[redacted]")
+        self.assertTrue(history[0]["logs_available"])
 
     def test_local_console_is_explicitly_not_connected_to_agent_api(self) -> None:
         console = LocalConsole()

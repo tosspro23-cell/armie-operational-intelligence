@@ -29,12 +29,13 @@ from . import config
 from .cli import (
     compose_stop,
     compose_up,
+    incident_id_for_run,
     new_run,
     run_real,
     prepare_runtime,
     validate_executor_boundary,
 )
-from .events import EventCapture, redact, runtime_identity
+from .events import EventCapture, new_incident_id, redact, runtime_identity
 from .probe import (
     probe_incident,
     request_json,
@@ -143,6 +144,142 @@ def _turn_snapshot(run_dir: Path, label: str) -> dict[str, Any]:
     }
 
 
+def _progress_events(controller_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate controller/session lifecycle records into user-facing stages."""
+
+    turn_labels = {
+        "initial_investigation": "Initial investigation",
+        "contradictory_evidence_reassessment": "Contradictory-evidence reassessment",
+        "remediation_proposal": "Remediation proposal",
+        "post_remediation_verification": "Post-remediation verification",
+    }
+    progress: list[dict[str, Any]] = []
+    for record in controller_records:
+        kind = record.get("kind")
+        payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+        label = None
+        detail = None
+        status = "complete"
+        if kind == "workbench_live_run_requested":
+            label, detail = "Investigation requested", "The Workbench started a bounded live run."
+        elif kind == "run_started":
+            label, detail = "Run initialized", "A new artifact record was opened for this incident."
+        elif kind == "target_started":
+            label, detail = "Target prepared", "The synthetic Payment API responded to its health check."
+        elif kind == "executor_boundary_check":
+            label, detail = "Read-only boundary verified", "Evidence was readable and the executor could not write to it."
+        elif kind == "credential_readiness":
+            label, detail = "Credential readiness checked", "Only presence/readiness was recorded; key values were not exposed."
+        elif kind == "session_created":
+            label, detail = "Agents API Session created", "The saved SRE Agent definition was used for this Session."
+        elif kind == "executor_starting":
+            label, detail = "Self-hosted executor starting", "The isolated executor was instructed to connect to this Session."
+        elif kind == "api_stream_open":
+            label, detail = "Session event stream open", "The application subscribed before sending the next turn."
+        elif kind == "environment_connected":
+            label, detail = "Environment connected", "The self-hosted executor emitted the connected event."
+        elif kind == "session_input":
+            turn = str(payload.get("label", ""))
+            label = turn_labels.get(turn, "Agent turn started")
+            detail = "The same Session received a new user instruction."
+            status = "current"
+        elif kind == "turn_completed":
+            outcome = str(payload.get("outcome", "completed"))
+            label, detail = "Agent turn completed", f"Observable turn outcome: {outcome}."
+        elif kind == "session_state_retrieved":
+            label, detail = "Session state retrieved", f"The API reported status: {payload.get('status', 'unknown')}."
+        elif kind == "session_items_retrieved":
+            label, detail = "Session items captured", f"{payload.get('item_count', 0)} observable items were persisted for review."
+        elif kind == "contradictory_observation":
+            label, detail = "Contradictory evidence introduced", "A fresh read-only control-plane observation was sent to the same Session."
+            status = "current"
+        elif kind == "approval_pending":
+            label, detail = "Human approval required", "The proposed synthetic remediation is waiting; no mutation has occurred."
+            status = "current"
+        elif kind == "approval_decision":
+            approved = bool(payload.get("approved"))
+            label, detail = "Approval decision recorded", "Approved allowlisted action." if approved else "Denied; no mutation was executed."
+        elif kind == "remediation_applied":
+            label, detail = "Controlled remediation applied", "The allowlisted synthetic configuration action completed."
+        elif kind == "verification_completed":
+            verified = bool(payload.get("verified"))
+            label, detail = "Recovery verification completed", "Fresh evidence verified recovery." if verified else "Fresh evidence did not verify recovery."
+        elif kind == "executor_cleanup":
+            label, detail = "Executor lifecycle closed", "The session executor was cleaned up after the run."
+        elif kind == "run_failed":
+            label, detail = "Run failed", "The controller stopped at the recorded boundary; inspect the run evidence for details."
+            status = "warning"
+        if label and detail:
+            progress.append(
+                {
+                    "kind": kind,
+                    "label": label,
+                    "detail": detail,
+                    "captured_at": record.get("captured_at"),
+                    "status": status,
+                    "source": "controller",
+                }
+            )
+    return progress[-80:]
+
+
+def _incident_history(limit: int = 20) -> list[dict[str, Any]]:
+    root = config.ARTIFACTS_ROOT / "runs"
+    if not root.is_dir():
+        return []
+    records: list[dict[str, Any]] = []
+    for run_dir in root.iterdir():
+        if not run_dir.is_dir() or not (run_dir / "controller_events.jsonl").is_file():
+            continue
+        metadata = _read_json_file(run_dir / "incident.json")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        identity = _read_json_file(run_dir / "runtime_identity.json")
+        identity = identity if isinstance(identity, dict) else {}
+        controller_records = _read_jsonl(run_dir / "controller_events.jsonl")
+        kinds = [record.get("kind") for record in controller_records]
+        probes = _read_jsonl(run_dir / "target_probe.jsonl")
+        checkout = next(
+            (record for record in reversed(probes) if str(record.get("label", "")).startswith("checkout_")),
+            {},
+        )
+        checkout_status = checkout.get("status")
+        approval = _read_json_file(run_dir / "approval_record.json")
+        verified = (run_dir / "post_remediation_verification_final.md").is_file()
+        proposal_exists = (run_dir / "remediation_proposal_final.md").is_file()
+        if "run_failed" in kinds:
+            status = "failed"
+        elif isinstance(approval, dict) and approval.get("approved") and verified:
+            status = "recovered"
+        elif isinstance(approval, dict) and not approval.get("approved"):
+            status = "approval_denied"
+        elif proposal_exists:
+            status = "approval_pending"
+        elif checkout_status == 504:
+            status = "fault_observed"
+        elif checkout_status == 200:
+            status = "healthy"
+        else:
+            status = "recorded"
+        incident_id = metadata.get("incident_id") or identity.get("incident_id") or f"INC-LEGACY-{run_dir.name}"
+        records.append(
+            {
+                "incident_id": incident_id,
+                "run_id": run_dir.name,
+                "created_at": metadata.get("created_at") or (controller_records[0].get("captured_at") if controller_records else None),
+                "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime, tz=timezone.utc).isoformat(),
+                "status": status,
+                "checkout_status": checkout_status,
+                "approval": redact(approval) if isinstance(approval, dict) else None,
+                "verification_completed": verified,
+                "session_id": _stable_identifier_label(identity.get("agents_api_session_id")) if identity.get("agents_api_session_id") else None,
+                "event_count": len(controller_records),
+                "logs_available": (run_dir / "runtime" / "service.jsonl").is_file(),
+            }
+        )
+    records.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+    return records[: max(1, min(limit, 50))]
+
+
 def _empty_live_run_snapshot(
     status: str,
     run_id: str | None = None,
@@ -153,6 +290,7 @@ def _empty_live_run_snapshot(
     return {
         "available": True,
         "run_id": run_id or "",
+        "incident_id": "",
         "updated_at": utc_now(),
         "status": status,
         "message": message or "",
@@ -189,6 +327,8 @@ def _empty_live_run_snapshot(
         ],
         "agent_event_type_counts": {},
         "controller_timeline": [],
+        "timeline_events": [],
+        "current_stage": message or "Preparing live investigation",
         "approval": None,
         "proposal": {
             "text": "",
@@ -230,6 +370,9 @@ def live_run_snapshot() -> dict[str, Any]:
 
     identity = _read_json_file(run_dir / "runtime_identity.json")
     identity = _public_identity(redact(identity)) if isinstance(identity, dict) else {}
+    incident_id = identity.get("incident_id")
+    if not isinstance(incident_id, str) or not incident_id:
+        incident_id = incident_id_for_run(run_dir)
     controller_records = _read_jsonl(run_dir / "controller_events.jsonl")
     agent_records = _read_jsonl(run_dir / "agents_api_events.jsonl")
     controller_timeline = [
@@ -287,9 +430,19 @@ def live_run_snapshot() -> dict[str, Any]:
     else:
         status = "failed"
 
+    timeline_events = _progress_events(controller_records)
+    current_stage = next(
+        (
+            event["label"]
+            for event in reversed(timeline_events)
+            if event.get("kind") != "executor_cleanup"
+        ),
+        status,
+    )
     return {
         "available": True,
         "run_id": run_dir.name,
+        "incident_id": incident_id,
         "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime, tz=timezone.utc).isoformat(),
         "status": status,
         "message": "",
@@ -320,6 +473,8 @@ def live_run_snapshot() -> dict[str, Any]:
         ],
         "agent_event_type_counts": _event_type_counts(agent_records),
         "controller_timeline": controller_timeline[-80:],
+        "timeline_events": timeline_events,
+        "current_stage": current_stage,
         "approval": redact(approval) if isinstance(approval, dict) else None,
         "proposal": {
             "text": proposal_text,
@@ -343,6 +498,7 @@ class LocalConsole:
         self.state: dict[str, Any] = {
             "mode": "local_deterministic",
             "phase": "idle",
+            "incident_id": None,
             "run_id": None,
             "started_at": None,
             "updated_at": utc_now(),
@@ -438,7 +594,7 @@ class LocalConsole:
         return self._launch(self._reset_fault)
 
     def _reset_fault(self) -> None:
-        self._begin_run()
+        self._begin_run(new_incident_id())
         try:
             prepare_runtime()
             compose_up(force_recreate=True, reset_runtime_config=True)
@@ -504,8 +660,9 @@ class LocalConsole:
         )
         return {"checkout": checkout, "metrics": metrics}
 
-    def _begin_run(self) -> None:
-        run_dir, capture = new_run()
+    def _begin_run(self, incident_id: str | None = None) -> None:
+        incident_id = incident_id or self.state.get("incident_id") or new_incident_id()
+        run_dir, capture = new_run(incident_id=incident_id)
         with self.lock:
             self.run_dir = run_dir
             self.capture = capture
@@ -513,10 +670,11 @@ class LocalConsole:
             self.state = {
                 **self.state,
                 "phase": "target_starting",
+                "incident_id": incident_id,
                 "run_id": run_dir.name,
                 "started_at": utc_now(),
                 "updated_at": utc_now(),
-                "identity": runtime_identity(),
+                "identity": runtime_identity(incident_id=incident_id),
                 "proposal": None,
                 "approval": None,
                 "verification": None,
@@ -533,7 +691,7 @@ class LocalConsole:
                 },
             }
             capture.controller("ui_run_started", {"run_id": run_dir.name})
-            capture.write_json("runtime_identity.json", runtime_identity())
+            capture.write_json("runtime_identity.json", runtime_identity(incident_id=incident_id))
         self.emit("ui.run.started", {"run_id": run_dir.name})
 
     def _run_local(self) -> None:
@@ -778,7 +936,8 @@ def start_live_run() -> dict[str, Any]:
             raise HTTPException(status_code=409, detail="a live Agents API run is already active")
         if live_resume_process is not None and live_resume_process.poll() is None:
             raise HTTPException(status_code=409, detail="a live approval continuation is already running")
-        live_run_run_dir = new_run()[0]
+        current_incident_id = console.snapshot().get("incident_id") or new_incident_id()
+        live_run_run_dir = new_run(incident_id=str(current_incident_id))[0]
         EventCapture(live_run_run_dir).controller(
             "workbench_live_run_requested",
             {"entrypoint": "browser", "run_id": live_run_run_dir.name},
@@ -831,6 +990,13 @@ def get_state() -> dict[str, Any]:
 @app.get("/api/live-run")
 def get_live_run() -> dict[str, Any]:
     return live_run_snapshot()
+
+
+@app.get("/api/incidents")
+def get_incidents(limit: int = 20) -> dict[str, Any]:
+    """Return a redacted local index for replaying past incident evidence."""
+
+    return {"data": _incident_history(limit)}
 
 
 @app.post("/api/live-run/start", status_code=202)
